@@ -8,7 +8,8 @@
 //   node tools/sanitize-capture.mjs --in <raw capture.html> --out <fixture.html> [--select <css>]
 
 import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
-import { dirname, basename } from 'node:path';
+import { dirname, basename, resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 
 const ALLOWED_ATTRS = new Set([
@@ -25,8 +26,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Same shape, unanchored + global: catches a UUID embedded in a compound value
 // like "request-WEB:<uuid>-0" — real captures do this for data-turn-id.
 const UUID_G = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const HEX_RE = /^[0-9a-f]{16,}$/i;
-const B64_RE = /^[A-Za-z0-9+/]{16,}={0,2}$/;
+// Hex/base64 token passes, global just like UUID_G: a token embedded in a
+// compound value (e.g. "sess:<hex>-x") must be redacted too, not just a value
+// that is ENTIRELY hex/base64 top to bottom. 16+ minimum keeps short
+// structural slugs ("conversation-turn-1", "composer-submit-button") out of
+// scope — none of them have a 16-char run without a hyphen/space breaking it.
+const HEX_G = /[0-9a-f]{16,}/gi;
+const B64_G = /[A-Za-z0-9+/]{16,}={0,2}/g;
+// Tried in this order at every position via alternation: a UUID-shaped run
+// wins over a plain hex run over a plain base64 run, so a value is never
+// redacted twice and the UUID's dashed shape is preserved as before.
+const SECRET_G = new RegExp(`${UUID_G.source}|${HEX_G.source}|${B64_G.source}`, 'gi');
 
 function parseArgs(argv) {
   const args = { select: DEFAULT_SELECT };
@@ -46,7 +56,7 @@ function parseArgs(argv) {
 // Stable synthetic placeholder generator: the same source value always maps
 // to the same placeholder; values are numbered in first-seen order so the
 // output is deterministic across runs on the same capture.
-function makeRedactor() {
+export function makeRedactor() {
   const seen = new Map();
   let counter = 0;
   return function redact(value) {
@@ -60,17 +70,11 @@ function makeRedactor() {
   };
 }
 
-function isIdentifierShaped(value) {
-  return UUID_RE.test(value) || HEX_RE.test(value) || B64_RE.test(value);
-}
-
-// Redact a UUID anywhere inside a compound value (e.g. "request-WEB:<uuid>-0")
-// first; only if no embedded UUID was found, fall back to the whole-value
-// hex/base64 check.
-function redactValue(value, redact) {
-  const withUuidsRedacted = value.replace(UUID_G, (m) => redact(m));
-  if (withUuidsRedacted !== value) return withUuidsRedacted;
-  return isIdentifierShaped(value) ? redact(value) : value;
+// Redact every UUID/hex/base64-shaped run found anywhere inside `value`
+// (e.g. "request-WEB:<uuid>-0", "sess:<hex>-x"), preserving everything else
+// in the value verbatim (prefix, suffix, separators).
+export function redactValue(value, redact) {
+  return value.replace(SECRET_G, (m) => redact(m));
 }
 
 function escapeAttr(value) {
@@ -80,7 +84,7 @@ function escapeAttr(value) {
 // Rebuild a matched subtree into `outDoc`, keeping only tag names, nesting,
 // and allowlisted attributes. Text nodes, comments, and everything else are
 // dropped by construction (they are simply never visited/copied).
-function sanitizeElement(srcEl, outDoc, redact, stats) {
+export function sanitizeElement(srcEl, outDoc, redact, stats) {
   const tag = srcEl.tagName.toLowerCase();
   if (SKIP_TAGS.has(tag)) return null;
 
@@ -118,27 +122,38 @@ function serialize(el, depth = 0) {
   return out;
 }
 
+// Parses `html`, picks up to `maxMatches` elements matching `select`, and
+// returns the sanitized body markup plus element/attr counts. Pure function
+// (no filesystem access) so it's reusable from the CLI and from tests.
+export function sanitizeCapture(html, { select = DEFAULT_SELECT, maxMatches = MAX_MATCHES } = {}) {
+  const dom = new JSDOM(html);
+  const matches = [...dom.window.document.querySelectorAll(select)].slice(0, maxMatches);
+
+  const outDom = new JSDOM('<!doctype html><html><body></body></html>');
+  const outDoc = outDom.window.document;
+  const redact = makeRedactor();
+  const stats = { elements: 0, attrs: 0 };
+
+  const sanitizedRoots = matches
+    .map((m) => sanitizeElement(m, outDoc, redact, stats))
+    .filter(Boolean);
+
+  const body = sanitizedRoots.map((el) => serialize(el, 0)).join('');
+  return { body, stats };
+}
+
 function captureDate(inPath, outPath) {
   const dateInDirName = /(\d{4}-\d{2}-\d{2})/.exec(dirname(outPath));
   if (dateInDirName) return dateInDirName[1];
   return statSync(inPath).mtime.toISOString().slice(0, 10);
 }
 
-const args = parseArgs(process.argv.slice(2));
-const html = readFileSync(args.in, 'utf8');
-const dom = new JSDOM(html);
-const matches = [...dom.window.document.querySelectorAll(args.select)].slice(0, MAX_MATCHES);
+function runCli() {
+  const args = parseArgs(process.argv.slice(2));
+  const html = readFileSync(args.in, 'utf8');
+  const { body, stats } = sanitizeCapture(html, { select: args.select });
 
-const outDom = new JSDOM('<!doctype html><html><body></body></html>');
-const outDoc = outDom.window.document;
-const redact = makeRedactor();
-const stats = { elements: 0, attrs: 0 };
-
-const sanitizedRoots = matches
-  .map((m) => sanitizeElement(m, outDoc, redact, stats))
-  .filter(Boolean);
-
-const header = `<!--
+  const header = `<!--
 Sanitized structure-only fixture. Source capture: "${basename(args.in)}", captured ${captureDate(args.in, args.out)}.
 Attributes stripped to a fixed allowlist (${[...ALLOWED_ATTRS].join(', ')}) — no classes, no href/src,
 no session/cookie/query-string data. All text content and svg internals dropped; identifier-shaped
@@ -147,12 +162,16 @@ data-oracle / data-oracle-negative markers added by hand afterward.
 -->
 `;
 
-const body = sanitizedRoots.map((el) => serialize(el, 0)).join('');
-const outputHtml = header + body;
+  const outputHtml = header + body;
+  mkdirSync(dirname(args.out), { recursive: true });
+  writeFileSync(args.out, outputHtml, 'utf8');
 
-mkdirSync(dirname(args.out), { recursive: true });
-writeFileSync(args.out, outputHtml, 'utf8');
+  console.log(
+    `${stats.elements} elements, ${stats.attrs} attributes, ${Buffer.byteLength(outputHtml, 'utf8')} bytes -> ${args.out}`
+  );
+}
 
-console.log(
-  `${stats.elements} elements, ${stats.attrs} attributes, ${Buffer.byteLength(outputHtml, 'utf8')} bytes -> ${args.out}`
-);
+const thisFile = fileURLToPath(import.meta.url);
+if (process.argv[1] && resolvePath(process.argv[1]) === thisFile) {
+  runCli();
+}

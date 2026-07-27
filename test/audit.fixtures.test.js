@@ -65,6 +65,14 @@ function discoverFixtures(fixturesRoot) {
   return out;
 }
 
+// Pack names for which `fixtures` has zero rows. Used to enforce the ratchet
+// PER PACK: the old check only looked at fixtures.length across every pack
+// combined, so a newly added pack with an empty/missing fixtures/<pack>/ dir
+// produced no rows and therefore no test at all — zero coverage, silently.
+function missingFixturePacks(packNames, fixtures) {
+  return packNames.filter((name) => !fixtures.some((f) => f.pack === name));
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests: compile()
 // ---------------------------------------------------------------------------
@@ -198,6 +206,31 @@ test('resolve: ambiguous — more matches than max', () => {
   assert.equal(r.reason, 'ambiguous');
 });
 
+test('resolve: risk "action" anchor with no explicit max defaults to max:1 — two matches at strategy index 0 must be ambiguous, never resolve (F3 regression)', () => {
+  const doc = docFrom('<div data-testid="thing"></div><div data-testid="thing"></div>');
+  const p = packWith([{ id: 's1', testid: 'thing' }], { risk: 'action' }); // no max set
+  const r = resolve(p, 'thing', doc);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'ambiguous');
+  assert.equal(r.el, null);
+});
+
+test('resolve: risk "action" anchor with an EXPLICIT max keeps that max instead of the implicit default', () => {
+  const doc = docFrom('<div data-testid="thing"></div><div data-testid="thing"></div>');
+  const p = packWith([{ id: 's1', testid: 'thing' }], { risk: 'action', max: 5 });
+  const r = resolve(p, 'thing', doc);
+  assert.equal(r.ok, true);
+  assert.equal(r.matchedCount, 2);
+});
+
+test('resolve: risk "observe" anchor is unaffected by the action-anchor max default — pick:"last" still works with >1 matches', () => {
+  const doc = docFrom('<div data-testid="thing" id="a"></div><div data-testid="thing" id="b"></div>');
+  const p = packWith([{ id: 's1', testid: 'thing' }], { risk: 'observe', pick: 'last' });
+  const r = resolve(p, 'thing', doc);
+  assert.equal(r.ok, true);
+  assert.equal(r.el.id, 'b');
+});
+
 test('resolve: unknown-anchor', () => {
   const doc = docFrom('<div></div>');
   const r = resolve({ anchors: {} }, 'nope', doc);
@@ -329,6 +362,15 @@ test('resolve: expected[state] overrides the anchor default min/max', () => {
   assert.equal(r.reason, 'absent'); // idle's min:0 applies, not the anchor's implicit min:1
 });
 
+test('resolve: unknown-state — a state key NOT present in the anchor\'s "expected" map (typo/whitespace) must not silently fall back to plain min/max (F4 regression)', () => {
+  const packs = loadPacks();
+  const pack = packs['chatgpt.com'];
+  const doc = docFrom('<div></div>'); // stopButton fully rotted: zero matches on every strategy
+  const r = resolve(pack, 'stopButton', doc, { state: 'streaming ' }); // trailing-space typo, not a key in expected
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'unknown-state');
+});
+
 test('audit: status "unknown-state" is counted in summary, separate from "ok"', () => {
   const doc = docFrom('<div></div>');
   const pack = {
@@ -382,16 +424,42 @@ test('discoverFixtures: current/<variant> fixtures are flagged distinctly from d
   }
 });
 
+test('missingFixturePacks: flags a pack with zero fixtures even when a sibling pack has coverage (F5 regression: the old ratchet only checked the TOTAL fixture count across all packs, so a newly added empty pack produced no test at all)', () => {
+  const os = require('node:os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'driftwatch-perpack-'));
+  try {
+    fs.mkdirSync(path.join(tmp, 'packA', '2026-01-01'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'packA', '2026-01-01', 'a.html'), '<div></div>');
+    // packB intentionally has no directory at all — simulates a newly added
+    // pack whose fixtures/<pack>/ was never created.
+    const found = discoverFixtures(tmp);
+    assert.deepEqual(missingFixturePacks(['packA', 'packB'], found), ['packB']);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Fixture-driven audit tests — discovered at runtime, skipped gracefully if absent.
 // ---------------------------------------------------------------------------
 
 const fixtures = discoverFixtures();
+const packs = loadPacks();
+
+// Per-pack ratchet (F5): every pack declared in packs/*.json must have at
+// least one discoverable fixture. Asserted per pack, not per total count, so
+// a newly added pack with zero fixtures fails loudly by name instead of
+// silently shipping with no coverage at all.
+for (const packName of Object.keys(packs)) {
+  test(`fixtures: pack "${packName}" has at least one discoverable fixture`, () => {
+    const missing = missingFixturePacks([packName], fixtures);
+    assert.deepEqual(missing, [], `packs/${packName}.json has zero fixtures under fixtures/${packName}/`);
+  });
+}
 
 if (fixtures.length === 0) {
   test('fixtures: none discovered yet (skipped)', { skip: 'fixtures/**/*.html not present yet' }, () => {});
 } else {
-  const packs = loadPacks();
   const newestDatedDirByPack = {};
   for (const f of fixtures) {
     if (!f.isCurrent) newestDatedDirByPack[f.pack] = f.dir; // last write per pack wins = newest (sorted ascending)

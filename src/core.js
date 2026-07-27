@@ -96,7 +96,10 @@
 
   function effectiveRange(a, opts) {
     var min = a.min == null ? 1 : a.min;
-    var max = a.max == null ? Infinity : a.max;
+    // Action anchors are singletons by definition: two matches at any strategy
+    // index is ambiguous cardinality, not a pick-the-first-one decision. Only
+    // an explicit pack-level max overrides this; observe anchors are unaffected.
+    var max = a.max != null ? a.max : (a.risk === 'action' ? 1 : Infinity);
     if (a.expected && opts && opts.state && a.expected[opts.state]) {
       var st = a.expected[opts.state];
       if (st.min != null) min = st.min;
@@ -108,7 +111,11 @@
   function resolveInternal(pack, name, root, opts, resolving) {
     var a = pack.anchors[name];
     if (!a) return { ok: false, reason: 'unknown-anchor', el: null, els: [], attempts: [] };
-    if (a.expected && !(opts && opts.state)) {
+    // A state-conditioned anchor demands opts.state be a KEY in its `expected`
+    // map, not merely truthy. A typo'd or unrecognized state (e.g. a trailing
+    // space) must be as loud as an omitted one — never silently fall through
+    // to the anchor's plain min/max.
+    if (a.expected && !(opts && opts.state && Object.prototype.hasOwnProperty.call(a.expected, opts.state))) {
       return {
         ok: false, reason: 'unknown-state', el: null, els: [], attempts: [],
         strategyIndex: -1, strategyId: null, matchedCount: 0, degraded: false,
