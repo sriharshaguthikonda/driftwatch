@@ -8,3 +8,6 @@ dist/
 *.html
 *_files/
 !fixtures/**/*.html
+
+# local tooling metadata, not part of the library
+.repo-intel/
