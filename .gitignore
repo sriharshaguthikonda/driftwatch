@@ -1,0 +1,9 @@
+node_modules/
+
+# --- PRIVACY: raw page captures are SECRETS and must never enter this repo ---
+# Saved-page captures contain conversation text, account identifiers and session data.
+# Only sanitized, attribute-only fixtures under fixtures/**/ belong here, and they are
+# whitelisted explicitly below. Everything else HTML is blocked.
+*.html
+*_files/
+!fixtures/**/*.html

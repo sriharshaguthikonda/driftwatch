@@ -1,0 +1,18 @@
+{
+  "name": "driftwatch",
+  "version": "0.1.0",
+  "description": "Detect and survive DOM selector churn in browser extensions. Zero runtime dependencies.",
+  "license": "MIT",
+  "main": "dist/driftwatch.cjs",
+  "files": ["dist", "packs", "src", "LICENSE", "README.md"],
+  "scripts": {
+    "build": "node build.js",
+    "test": "node tools/check-no-captures.mjs && node build.js && node --test test/",
+    "guard": "node tools/check-no-captures.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  },
+  "keywords": ["selector", "dom", "churn", "browser-extension", "userscript", "resilience"],
+  "repository": { "type": "git", "url": "https://github.com/sriharshaguthikonda/driftwatch.git" }
+}
