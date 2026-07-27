@@ -1,0 +1,70 @@
+{
+  "pack": "chatgpt.com",
+  "version": 1,
+  "anchors": {
+    "conversationTurn": {
+      "risk": "observe",
+      "pick": "last",
+      "max": 400,
+      "strategies": [
+        { "id": "turn.testid-prefix", "testid": "conversation-turn-", "op": "^" },
+        { "id": "turn.data-turn-id", "attr": "data-turn-id" },
+        { "id": "turn.data-turn", "attr": "data-turn" },
+        { "id": "turn.legacy-article", "css": "article[data-testid^=\"conversation-turn-\"]" }
+      ]
+    },
+    "assistantMessage": {
+      "risk": "observe",
+      "pick": "last",
+      "strategies": [
+        { "id": "assistant.message-author-role", "attr": "data-message-author-role", "value": "assistant" },
+        { "id": "assistant.data-turn", "attr": "data-turn", "value": "assistant" }
+      ]
+    },
+    "copyResponseButton": {
+      "risk": "observe",
+      "pick": "last",
+      "max": 4,
+      "strategies": [
+        { "id": "copy.testid", "testid": "copy-turn-action-button" },
+        { "id": "copy.aria-label-prefix", "css": "button[aria-label^=\"Copy\"]", "requires": ["inside:conversationTurn"] }
+      ]
+    },
+    "composer": {
+      "risk": "action",
+      "degradeLimit": 1,
+      "strategies": [
+        { "id": "composer.prompt-textarea-contenteditable", "css": "div#prompt-textarea[contenteditable=\"true\"]" },
+        { "id": "composer.contenteditable-textbox", "css": "[contenteditable=\"true\"][role=\"textbox\"]" },
+        { "id": "composer.prompt-textarea-id", "css": "#prompt-textarea" }
+      ]
+    },
+    "sendButton": {
+      "risk": "action",
+      "degradeLimit": 1,
+      "min": 0,
+      "expected": {
+        "idle": { "min": 1, "max": 1 },
+        "streaming": { "min": 0, "max": 0 }
+      },
+      "strategies": [
+        { "id": "send.testid", "css": "button[data-testid=\"send-button\"]", "requires": ["connected", "enabled"] },
+        { "id": "send.composer-submit-id", "css": "button#composer-submit-button:not([disabled])", "requires": ["connected", "enabled"] },
+        { "id": "send.aria-label-prefix", "css": "form button[aria-label^=\"Send\"]:not([disabled])", "requires": ["connected", "enabled"] }
+      ]
+    },
+    "stopButton": {
+      "risk": "action",
+      "degradeLimit": 1,
+      "min": 0,
+      "expected": {
+        "idle": { "min": 0, "max": 0 },
+        "streaming": { "min": 1, "max": 1 }
+      },
+      "strategies": [
+        { "id": "stop.testid", "css": "button[data-testid=\"stop-button\"]", "requires": ["connected", "enabled"] },
+        { "id": "stop.aria-label-prefix", "css": "button[aria-label^=\"Stop\"]:not([disabled])", "requires": ["connected", "enabled"] }
+      ]
+    }
+  }
+}

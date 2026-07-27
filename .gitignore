@@ -1,4 +1,5 @@
 node_modules/
+dist/
 
 # --- PRIVACY: raw page captures are SECRETS and must never enter this repo ---
 # Saved-page captures contain conversation text, account identifiers and session data.

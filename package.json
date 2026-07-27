@@ -7,7 +7,7 @@
   "files": ["dist", "packs", "src", "LICENSE", "README.md"],
   "scripts": {
     "build": "node build.js",
-    "test": "node tools/check-no-captures.mjs && node build.js && node --test test/",
+    "test": "node tools/check-no-captures.mjs && node build.js && node --test test/*.test.js",
     "guard": "node tools/check-no-captures.mjs"
   },
   "devDependencies": {
