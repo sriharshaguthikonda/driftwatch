@@ -1,269 +1,180 @@
-# driftwatch Design Rationale
+# driftwatch design rationale
 
-## The Silent Failure Problem
+This is the "why", not the "how" — see `README.md` for the API. Every claim below is
+backed by something in `src/`, `test/`, `packs/chatgpt.com.json`, or
+`docs/REVIEW-2026-07-27-external.md`, which is the authoritative record of what an
+external design review found and what this project accepted, deferred, or rejected.
 
-Browser extensions bind to DOM selectors at development time. The sites they target redesign constantly, sometimes monthly. When a selector becomes invalid, the extension silently stops working. No exceptions are thrown. No logs are written. The user experiences hangs, missed messages, or no-ops — but has no way to know the root cause.
+## Why silent failure is the real enemy
 
-Traditional monitoring looks for network errors or runtime exceptions. Selector churn produces neither. It is structural: the code runs perfectly; the data it expects has moved.
+A selector-driven extension doesn't crash when the site it targets changes. It just stops
+matching. `document.querySelectorAll(...)` returns an empty list, the code that expected
+one element does nothing, and no exception is thrown anywhere. There is no log line to
+grep for and no stack trace to file a bug against — the failure mode is "the feature quietly
+does nothing," which is the hardest kind of bug to notice, let alone diagnose.
 
-driftwatch solves this by:
+driftwatch's job is to turn that silence into a signal: rank selector strategies so the
+most durable one is tried first, record which one actually won, and expose that as a
+status (`ok` / `degraded` / `broken` / ...) instead of a boolean. `degraded` means "this
+still works, but the DOM contract moved" — it is the whole point of the library, and it
+does not exist in a plain `try { el.click() } catch {}`.
 
-1. **Detecting churn** — the DOM contract changed if fallback strategies were needed
-2. **Reporting safely** — exporting only pack-authored IDs and match counts, never page text
-3. **Persisting evidence** — timestamping audit snapshots to the browser's local storage so you know when degradation started
-4. **Acting locally** — no network calls, all logic runs on the client
+## Generic-before-qualified — but only for collections, not singletons
 
-## Why Generic Strategies Beat Newest-First
-
-Most selector libraries rank strategies by specificity or recency. driftwatch ranks by genericity.
-
-### The Evidence: article → section
-
-chatgpt.com changed:
+The original rule was "rank generic selectors ahead of qualified ones, always." The
+evidence for that rule is real: chatgpt.com's conversation-turn element moved from
+`article` to `section`.
 
 ```
-article[data-testid^="conversation-turn-"] → section[data-testid^="conversation-turn-"]
+2026-03-19 fixture: article[data-testid^="conversation-turn-"]  → 2 matches
+2026-07-15 fixture: article[data-testid^="conversation-turn-"]  → 0 matches
+2026-07-15 fixture: [data-testid^="conversation-turn-"]         → 2 matches (unchanged)
 ```
 
-If strategies were ranked newest-first:
-- Strategy 0: `section[data-testid^="conversation-turn-"]` ← fails on old versions
-- Strategy 1: `article[data-testid^="conversation-turn-"]` ← fails on new versions
+Dropping the tag entirely (`turn.testid-prefix` in `packs/chatgpt.com.json`) is what
+survived. That's `conversationTurn` — an **observe collection**: many elements, read-only,
+and the tag around them is incidental decoration.
 
-Both old and new versions would report degradation, making the signal useless.
+But the external review (`docs/REVIEW-2026-07-27-external.md`, A2) measured a
+counter-example on the same live site: `button[aria-label^="Copy"]` matches **23**
+elements (every "Copy code" button inside every code block in the conversation), while
+`[data-testid="copy-turn-action-button"]` matches 2. Stripping the tag here doesn't make
+the selector more durable — it makes it match the wrong thing 21 times out of 23.
 
-If strategies are ranked generic-first:
-- Strategy 0: `[data-testid^="conversation-turn-"]` ← survives both versions
-- Strategy 1: `article[data-testid^="conversation-turn-"]` ← survives old
-- Strategy 2: `section[data-testid^="conversation-turn-"]` ← survives new
+The corrected rule, encoded directly in `packs/chatgpt.com.json`:
 
-Old versions use strategy 0 (no degradation). New versions use strategy 0 (no degradation). Only when the attribute value itself changes (e.g., `data-testid` is removed) does the library fall through and signal degradation.
+- **Observe collections** (`conversationTurn`, `assistantMessage`) — generic first. The
+  wrapping tag is decoration; nothing in the observation depends on it.
+- **Action singletons** (`sendButton`, `stopButton`, `composer`, `copyResponseButton`) —
+  tag-qualified and scoped. `button[...]` here isn't decoration, it's a semantic
+  precondition: it asserts the matched node is natively clickable, not just some `<div>`
+  that happens to carry a similar `aria-label`. `copyResponseButton`'s second strategy
+  goes further and adds `requires: ["inside:conversationTurn"]` — see below.
 
-**Principle:** Generic strategies have longer shelf lives. Rank them first. Specific strategies are breakdowns, not upgrades.
+## Why action anchors fail closed
 
-## Action vs. Observe Risk Classes
+`risk: "action"` anchors are things the caller intends to `.click()`. Clicking a
+plausible-but-wrong element (a copy-code button instead of copy-response, a stale send
+button from a detached DOM subtree) is worse than not clicking anything, because the
+caller has no way to tell the difference from the result alone.
 
-Two anchor types require different degradation policies.
-
-### Action Anchors (Clickable Elements)
-
-An action anchor is an element the extension code intends to click or interact with. Clicking the wrong element is worse than not clicking at all.
-
-- **Policy:** Fail closed after `degradeLimit` strategies (default 1). `resolve()` returns `null` rather than guessing.
-- **Rationale:** Silent wrong-element clicks can delete data, archive conversations, or trigger unintended actions. Better to hang than corrupt state.
-
-### Observe Anchors (Readable Elements)
-
-An observe anchor is an element the extension reads from (text content, attributes, computed styles). Returning stale or nearby data is recoverable.
-
-- **Policy:** Degrade freely down the strategy list. No `degradeLimit`.
-- **Rationale:** Extracting text or checking a flag is lower-risk. Fallback strategies that match nearby elements are informative and safe.
-
-## Fail-Closed for Clickable Elements
-
-The `degradeLimit` mechanism ensures action anchors do not guess. If the first `degradeLimit` strategies fail, `resolve()` returns:
+The policy, implemented in `resolveInternal` (`src/core.js`):
 
 ```javascript
-{
-  ok: false,
-  reason: "Degraded beyond limit",
-  el: null,
-  strategyIndex: -1
+var degraded = i > 0;
+if (degraded && a.risk === 'action' && i > (a.degradeLimit || 0)) {
+  return { ok: false, reason: 'fail-closed', el: null, ... };
 }
 ```
 
-The extension code explicitly checks `result.ok` before calling `.click()`. No implicit fallback; no accidental interactions.
+`degradeLimit` defaults to `0` — an action anchor gets exactly one fallback strategy
+before `resolve()` refuses outright rather than guess. Observe anchors have no such limit;
+they degrade all the way down the strategy list, because reading from a slightly-wrong
+element is recoverable in a way that clicking one is not.
 
-## Text-Free Reports by Construction
+## The `min: 0` bug — a caught defect, not a hypothetical
 
-driftwatch reports contain only:
+The single most instructive bug in this repo's history. An anchor with `min: 0` (meaning
+"legitimately absent sometimes," e.g. `stopButton` when nothing is generating) hit a path
+where every strategy matched zero elements. The old logic let a zero-length match set
+satisfy `0 <= 0 <= max` and return early:
 
-- Pack-authored anchor and strategy IDs (strings)
-- Statuses (`ok`, `degraded`, `broken`, `absent`, `ambiguous`)
-- Integer match counts and strategy indices
-- Timestamps (if using canary polling)
-
-They never contain:
-
-- Page text or quoted HTML
-- Full URLs (only hostname extracted if needed)
-- Attribute values from the live page
-- DOM snapshots
-
-This is enforced structurally: the audit API cannot access page text. It counts matches and returns IDs. If you want a raw DOM capture for debugging, that is logged locally only and blocked from storage by the `tools/check-no-captures.mjs` linter.
-
-## The Ratchet: Fixtures Drive Honesty
-
-Fixtures live in dated directories:
-
-```
-test/fixtures/chatgpt.com/
-  2025-01-15/
-    page.html
-    audit-golden.json
-  2025-02-01/
-    page.html
-    audit-golden.json
+```javascript
+ok: true, el: els[0], ...   // els is [], els[0] is undefined
 ```
 
-The ratchet mechanism works like this:
+`ok: true` with `el: undefined`. Every caller trusts `ok` and skips its own null check —
+that's the entire point of `result.ok`. So this shipped a landmine: call `.click()` on it
+and you get `Cannot read properties of undefined`, at a call site nowhere near the actual
+defect.
 
-1. **Old fixture degrades:** If a test runs against the 2025-01-15 fixture and strategy[0] no longer matches, the test marks it `degraded` but passes (old is expected to degrade over time).
-2. **New fixture degrades:** If strategy[0] fails on the 2025-02-01 fixture, the test fails. This is not allowed.
-3. **Adding a fixture:** Drop in a new dated directory. Zero code changes needed. Existing strategies are re-validated against today's DOM.
+Fixed in `resolveInternal` by special-casing the zero-match case before the min/max check
+ever runs:
 
-**Why this works:** Developers often update packs reactively (only when a user complains). The ratchet makes proactive updates obvious: if you have a 2025-02-01 fixture, your strategy[0] MUST match it. This forces the pack to stay fresh.
+```javascript
+if (els.length === 0 || els.length < min || els.length > max) continue;
+```
 
-The ratchet is not a test runner; it is a discipline enforcer. It prevents strategy drift.
+Zero matches now never resolves, full stop — `min: 0` only changes what happens *after*
+every strategy has been tried (`absent` vs `broken`), never whether an empty result can
+satisfy a strategy in-flight. `test/audit.fixtures.test.js` pins this with a named
+regression test: *"absent — min:0, zero plain matches (regression: was ok/primary with el
+undefined)"*, and a repo-wide invariant test walks every anchor in every real pack against
+an empty scope asserting `ok: true` never pairs with a falsy `el`.
 
-## Pack JSON Schema
+## Why `requires` exists
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `site` | string | yes | Hostname or domain (e.g., `chatgpt.com`). Used for organizing fixtures and reports. |
-| `anchors` | object | yes | Map of anchor name → anchor definition. At least one anchor required. |
-| `anchors[*].riskClass` | `"action"` or `"observe"` | yes | Controls degradation policy. Action anchors fail closed; observe anchor degrade freely. |
-| `anchors[*].degradeLimit` | number | no | Max strategies to try for action anchors before failing closed. Default: 1. Ignored for observe anchors. |
-| `anchors[*].strategies` | array | yes | Ordered list of strategy objects. Tried in order; first match wins. |
-| `anchors[*].strategies[*].id` | string | yes | Unique telemetry key for this strategy. Used in audit reports. Example: `css-article-testid`. |
-| `anchors[*].strategies[*].kind` | string | yes | Strategy type: `css`, `testid`, `attr`, or `role`. |
-| `anchors[*].strategies[*].value` | string | yes | Selector value (CSS string for `css`; testid substring for `testid`; attribute name for `attr`; role name for `role`). |
-| `anchors[*].strategies[*].op` | string | no | For `testid` and `attr` kinds: `=` (exact), `^` (starts), `*` (contains). Default: `=`. |
-| `anchors[*].strategies[*].minMatches` | number | no | Strategy fails if fewer than this many elements match. Default: 1. Use 0 to allow zero matches. |
-| `anchors[*].strategies[*].maxMatches` | number | no | Strategy fails if more than this many elements match. Omit for no upper bound. Useful for ensuring unambiguous elements. |
-| `anchors[*].strategies[*].name` | string | no | For `role` kind only. ARIA name (accessible name) to match. Exact match. |
-| `anchors[*].strategies[*].value` (role) | string | no | For `role` kind only. The ARIA role value (e.g., `button`, `menuitem`). |
+Cardinality — "exactly 1 element matched" — proves a count, never an identity. Two
+strategies can each report exactly one match and still be looking at two completely
+different elements, and cardinality alone cannot detect that.
 
-### Example: Full Pack Structure
+`requires` is a small, fixed vocabulary evaluated on the elements a strategy already
+matched: `connected`, `enabled`, `visible`, `inside:<anchorName>`. It is deliberately not
+"arbitrary JS predicate" — packs stay pure data, and an untrusted pack can only reach
+these four checks, not run code. `inside:` is the load-bearing one: it is exactly what
+stops `copyResponseButton`'s generic `button[aria-label^="Copy"]` strategy from resolving
+to one of the 23 code-block copy buttons instead of the one inside the actual conversation
+turn — `requires: ["inside:conversationTurn"]` filters the match set down to elements the
+resolved `conversationTurn` anchor actually contains.
+
+## Why expectations are state-conditioned
+
+`min: 0` alone has a second failure mode, independent of the bug above: if `stopButton`
+is *unconditionally* allowed to match zero elements, then a stop-button selector that has
+completely rotted — broken in every browser session, for every user, forever — reports
+`absent` on every single audit. `absent` and "rotted" are indistinguishable from outside,
+because both look like "zero matches, and that's allowed." That is the exact silent
+failure this library exists to catch, reintroduced through the escape hatch meant to
+prevent it.
+
+The fix is that "legitimately zero" is only true in a specific state, not always:
 
 ```json
-{
-  "site": "example.com",
-  "anchors": {
-    "submitButton": {
-      "riskClass": "action",
-      "degradeLimit": 1,
-      "strategies": [
-        {
-          "id": "role-button-submit",
-          "kind": "role",
-          "value": "button",
-          "name": "Submit",
-          "maxMatches": 1
-        },
-        {
-          "id": "css-input-type-submit",
-          "kind": "css",
-          "value": "input[type='submit']",
-          "maxMatches": 1
-        }
-      ]
-    },
-    "messageList": {
-      "riskClass": "observe",
-      "strategies": [
-        {
-          "id": "css-messages-role",
-          "kind": "role",
-          "value": "list",
-          "minMatches": 1
-        },
-        {
-          "id": "css-messages-class",
-          "kind": "css",
-          "value": "[class*='messages']",
-          "minMatches": 1
-        }
-      ]
-    }
-  }
+"stopButton": {
+  "min": 0,
+  "expected": { "idle": { "min": 0, "max": 0 }, "streaming": { "min": 1, "max": 1 } }
 }
 ```
 
-## YAGNI (You Aren't Gonna Need It)
+`resolve`/`audit` take an `opts.state`. Without one, an anchor that declares `expected`
+returns `unknown-state` rather than silently reusing the anchor's unconditional default —
+so a caller that forgets to pass `state` gets a visibly different status, not a false
+`ok`. With `state: 'streaming'`, `stopButton` matching zero is now `broken`, not `absent` —
+the selector rotted and the report says so.
 
-Explicit non-goals, with one-line justifications:
+## Why the ratchet uses a "current frontier," not a single newest fixture
 
-| Feature | Why Not |
-|---------|---------|
-| Auto-healing (algorithmic selector repair) | Selectors are site-specific; only humans can author trustworthy ones. |
-| LLM-based selector inference | Reduces to black-box guessing; no auditability or reproducibility. |
-| Network reporting | Privacy risk and operationally complex; local storage is simpler and sufficient. |
-| Shadow DOM piercing | Minority use case; complicates traversal logic without clear payoff. |
-| XPath support | CSS is more readable and equally powerful for the target domain. |
-| Text-content matching | Language-dependent and brittle; moved elements break instantly. |
-| Hybrid CSS+JS selectors | Mixing concerns; CSS-only is declarative and testable. |
-| Strategy auto-ranking by age | Leads to churn; generic strategies outlive specific ones regardless of date. |
-| Retry loops with backoff | Extension runs synchronously; timeout is simpler than polled retry. |
-| Caching resolved elements | Extensions deal with dynamic DOM; caches mask churn and must be invalidated anyway. |
-| In-pack comments (JSON5) | driftwatch packs are data, not code; migrations tool can inject metadata if needed. |
+The original ratchet rule was "strategy[0] must win on the single most-recently-dated
+fixture." That breaks down as soon as a site has more than one simultaneous "now": desktop
+vs. mobile layout, streaming vs. idle, logged-in vs. logged-out, a long conversation vs. a
+short one. Picking one dated directory as *the* newest and requiring strategy[0] to win
+there causes strategy-order thrash — a pack reordered to satisfy the mobile fixture starts
+failing the desktop one, and vice versa.
 
-## Resolve API Shape
+`test/audit.fixtures.test.js` replaces "newest dated dir" with a **frontier directory**,
+`fixtures/<pack>/current/<variant>/`. Every variant under `current/` is equally "now," and
+every anchor found in every current variant must resolve `ok` (not `degraded`) — anything
+less fails the test. Dated directories (`2026-03-19-turns/`, `2026-07-15-turns/`) remain
+as a fallback ratchet only when a pack has no `current/` fixtures yet: they're allowed to
+show `degraded` (expected, as the DOM moves on from them) but never `broken` or
+`ambiguous`. A fixture can also declare `data-oracle`/`data-oracle-negative` markers to
+pin exact element identity, not just status — see `README.md`.
 
-```javascript
-dw.resolve(anchorName, rootElement)
-  → {
-      ok: boolean,                   // true iff element was found within constraints
-      reason: string | null,         // if !ok, one of: "Ambiguous", "No match", "Degraded beyond limit"
-      el: Element | null,            // matched element, or null if !ok
-      els: Element[],                // all elements that matched the winning strategy
-      strategyIndex: number,         // 0 for first strategy, -1 if !ok
-      strategyId: string | null,     // pack-authored ID of winning strategy, or null if !ok
-      matchedCount: number,          // total elements matched by winning strategy
-      degraded: boolean,             // true iff strategyIndex > 0 (churn signal)
-      attempts: Array<{              // debug trace of each strategy tried
-        strategyId: string,
-        kind: string,
-        ok: boolean,
-        matchedCount: number,
-        reason: string | null
-      }>
-    }
-```
+## Deferred, with reasons
 
-## Audit API Shape
+From the external review triage (`docs/REVIEW-2026-07-27-external.md`) — accepted as real
+concerns, deliberately not built:
 
-```javascript
-dw.audit(rootElement)
-  → {
-      anchors: {
-        [anchorName]: {
-          status: "ok" | "degraded" | "broken" | "absent" | "ambiguous",
-          strategyIndex: number,
-          strategyId: string | null,
-          matchedCount: number,
-          reason: string | null
-        }
-      },
-      summary: {
-        ok: number,
-        degraded: number,
-        broken: number,
-        absent: number,
-        ambiguous: number
-      },
-      timestamp?: number             // if audit called with options.timestamp: true
-    }
-```
+| Suggestion | Why not now |
+|---|---|
+| Per-strategy `risk` + `capabilities` tiers, `resolve(name, {maximumRisk})` | Overlaps what `requires` + anchor-level `risk` already do. Shipping both is two vocabularies for one job. Revisit only if `requires` proves insufficient. |
+| Playwright real-browser test layer | Real gap — jsdom has no layout engine, so `visible`, geometry, and occlusion can't be evaluated there. Mitigated for now: `visible` reports `unchecked` under jsdom instead of silently passing or failing. Add the browser layer when an anchor actually breaks on a visibility condition in practice. |
+| Bucketed counts instead of exact numbers/timestamps | Only matters once reports leave the device. They don't — there is no network path, by design. Documented here as the precondition for ever adding one. |
+| Pack signing / trusted-capability packs | Real threat: a malicious pack could aim a click at the wrong element. Currently moot because packs are baked into `dist/` at build time — there is no remote pack fetch. This is the blocker to ever shipping remote packs. |
+| Structural fixture assertions (e.g. "turns[1] has `data-turn=\"assistant\"`") | Partially covered already by `data-oracle` markers, which pin element identity. Extend that mechanism rather than add a second one. |
 
-## Canary Polling
-
-The canary runs a poll on an interval (default 5000 ms) and writes a snapshot to storage only when the audit result changes:
-
-```javascript
-dw.canary({
-  pollIntervalMs: 5000,              // interval between audits
-  storage: chrome.storage.local      // or GM_setValue for userscripts
-  maxSnapshots: 50,                  // keep N most recent snapshots
-  onReport: (audit, delta) => {}     // callback when status changes
-});
-```
-
-Storage key: `driftwatch:${packSite}:snapshots`. Each snapshot is timestamped and includes the full audit summary. Old snapshots are pruned to stay within `maxSnapshots`.
-
-## Implementation Constraints
-
-- **No runtime dependencies:** driftwatch is ~10 KB minified, zero external imports
-- **Universal environment:** runs in MV3 content scripts (no `document` globals), userscripts (GM_* APIs), and Node + jsdom
-- **Synchronous resolution:** `resolve()` and `audit()` do not async/await; they scan the live DOM immediately
-- **No mutation:** reading anchors does not modify the page or trigger reflows beyond what the browser already does
-- **Single-pass matching:** each strategy is evaluated once per call; no backtracking
+Also recorded, but explicitly out of scope for this library: bounding how long a caller
+waits on a `resolve()` result is the caller's problem, not driftwatch's — driftwatch
+resolves elements, it does not own timers or wait loops (see `src/canary.js`'s own
+comment: "No timer here on purpose"). Nothing in the review was rejected outright as
+wrong; everything above is a scope call.
