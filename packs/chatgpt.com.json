@@ -26,7 +26,7 @@
       "pick": "last",
       "max": 4,
       "strategies": [
-        { "id": "copy.testid", "testid": "copy-turn-action-button" },
+        { "id": "copy.testid-button", "css": "button[data-testid=\"copy-turn-action-button\"]", "requires": ["inside:conversationTurn"] },
         { "id": "copy.aria-label-prefix", "css": "button[aria-label^=\"Copy\"]", "requires": ["inside:conversationTurn"] }
       ]
     },
@@ -34,9 +34,9 @@
       "risk": "action",
       "degradeLimit": 1,
       "strategies": [
-        { "id": "composer.prompt-textarea-contenteditable", "css": "div#prompt-textarea[contenteditable=\"true\"]" },
+        { "id": "composer.prompt-textarea-id", "css": "#prompt-textarea" },
         { "id": "composer.contenteditable-textbox", "css": "[contenteditable=\"true\"][role=\"textbox\"]" },
-        { "id": "composer.prompt-textarea-id", "css": "#prompt-textarea" }
+        { "id": "composer.prompt-textarea-contenteditable", "css": "div#prompt-textarea[contenteditable=\"true\"]" }
       ]
     },
     "sendButton": {
@@ -62,8 +62,8 @@
         "streaming": { "min": 1, "max": 1 }
       },
       "strategies": [
-        { "id": "stop.testid", "css": "button[data-testid=\"stop-button\"]", "requires": ["connected", "enabled"] },
-        { "id": "stop.aria-label-prefix", "css": "button[aria-label^=\"Stop\"]:not([disabled])", "requires": ["connected", "enabled"] }
+        { "id": "stop.composer-submit-id", "css": "form[data-type=\"unified-composer\"] #composer-submit-button[data-testid=\"stop-button\"]", "requires": ["connected", "enabled"] },
+        { "id": "stop.aria-label-prefix", "css": "main form button[aria-label^=\"Stop\"]:not([disabled])", "requires": ["connected", "enabled"] }
       ]
     }
   }

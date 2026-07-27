@@ -1,0 +1,52 @@
+<!--
+Hand-built structure-only frontier fixture (not a sanitized capture — no raw source
+file). Reflects the live DOM shapes recorded in docs/chatgpt-com-anatomy.md
+(captured 2026-07-28): section-based turns (article->section churn already landed),
+the ProseMirror composer, and the sidebar decoy that a loose stopButton selector
+could mis-match. Attributes limited to the tools/check-no-captures.mjs allow-list;
+no text content. data-oracle / data-oracle-negative markers added by hand.
+
+Composer's submit button is intentionally OMITTED: this fixture models the
+"generation complete" instant from the anatomy doc, where chatgpt.com removes
+button#composer-submit-button from the DOM entirely until the composer has content
+again. sendButton/stopButton are not oracle-marked here because both are
+state-conditioned (`expected`) and audit()/resolve() need an explicit opts.state to
+evaluate them at all — this fixture only pins the state-independent anchors.
+-->
+<nav aria-label="Chat history">
+  <div id="history">
+    <ul>
+      <li>
+        <a aria-label="Sample Stop Chat">
+          <button type="button" aria-label="Pin Sample Stop Chat" data-oracle-negative=""></button>
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+<main>
+  <section data-testid="conversation-turn-1" data-turn-id="t1" data-turn="user">
+    <div data-message-author-role="user">
+      <div></div>
+    </div>
+    <div role="group" aria-label="Your message actions">
+      <button type="button" aria-label="Copy message" data-testid="copy-turn-action-button" data-oracle-negative=""></button>
+      <button type="button" aria-label="Edit message"></button>
+    </div>
+  </section>
+  <section data-testid="conversation-turn-2" data-turn-id="t2" data-turn="assistant" data-oracle="conversationTurn">
+    <div data-message-author-role="assistant" data-oracle="assistantMessage">
+      <div></div>
+    </div>
+    <div role="group" aria-label="Response actions">
+      <button type="button" aria-label="Copy response" data-testid="copy-turn-action-button" data-oracle="copyResponseButton"></button>
+      <button type="button" aria-label="Good response" data-testid="good-response-turn-action-button"></button>
+      <button type="button" aria-label="Bad response" data-testid="bad-response-turn-action-button"></button>
+    </div>
+  </section>
+  <form data-type="unified-composer">
+    <div id="prompt-textarea" contenteditable="true" role="textbox" data-oracle="composer">
+      <div></div>
+    </div>
+  </form>
+</main>

@@ -23,7 +23,7 @@ const ALLOWED_ATTRS = new Set([
   'id', 'role', 'contenteditable', 'type', 'placeholder', 'dir', 'disabled', 'hidden',
   'aria-label', 'aria-hidden', 'aria-expanded', 'aria-live',
   'data-testid', 'data-message-author-role', 'data-turn', 'data-turn-id',
-  'data-turn-id-container', 'data-scroll-anchor', 'data-virtualkeyboard',
+  'data-turn-id-container', 'data-scroll-anchor', 'data-virtualkeyboard', 'data-type',
   'data-oracle', 'data-oracle-negative', 'data-state',
 ]);
 
