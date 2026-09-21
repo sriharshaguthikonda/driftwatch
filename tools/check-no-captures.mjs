@@ -10,6 +10,8 @@
 //   4. no attribute VALUE that looks like page content (email, digit run, token,
 //      long value, or a multi-word phrase) — an allowed attribute name says
 //      nothing about what's stuffed inside its value.
+//   5. data-oracle* marker values must be agent-authored anchor-name lists
+//      (letters + single spaces); data-oracle-negative must be "1" (or "" in the legacy July fixture)
 // Anything else tracked in the repo must not be .html at all.
 
 import { readdirSync, statSync, readFileSync } from 'node:fs';
@@ -42,6 +44,11 @@ const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 const DIGIT_RUN_RE = /\d{7,}/;
 const TOKEN_PREFIX_RE = /\bsk-[A-Za-z0-9]|\beyJ[A-Za-z0-9]/;
 const UUID_ANYWHERE_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+// Oracle markers are agent-authored anchor-name lists (e.g. "userUnit
+// editMessageButton") — camelCase words joined by single spaces, letters only.
+// Anything else inside a data-oracle* value is page content by construction.
+const ORACLE_ANCHOR_RE = /^[A-Za-z]+(?: [A-Za-z]+)*$/;
+const ORACLE_ANCHOR_ATTRS = new Set(['data-oracle', 'data-oracle-exchange', 'data-oracle-collection']);
 
 function decodeAttrEntities(v) {
   return v.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
@@ -115,6 +122,23 @@ export function runGuard(root) {
           continue;
         }
         const value = decodeAttrEntities(rawValue);
+        // Oracle markers are agent-authored, not page content: prove it. The
+        // anchor-name shape replaces the generic value checks for these attrs
+        // (a letters-only list cannot be an email, token or digit run, and a
+        // legitimate long list may exceed the generic word cap).
+        if (name === 'data-oracle-negative') {
+          // "" is the legacy form used by the 2026-07-28 fixture.
+          if (value !== '1' && value !== '') {
+            failures.push(`${rel}: attribute "${attr}" oracle marker value is not an anchor-name list — ${redactExcerpt(value)}`);
+          }
+          continue;
+        }
+        if (ORACLE_ANCHOR_ATTRS.has(name)) {
+          if (!ORACLE_ANCHOR_RE.test(value)) {
+            failures.push(`${rel}: attribute "${attr}" oracle marker value is not an anchor-name list — ${redactExcerpt(value)}`);
+          }
+          continue;
+        }
         const reason = suspiciousValueReason(value);
         if (reason) {
           failures.push(`${rel}: attribute "${attr}" value ${reason} — ${redactExcerpt(value)}`);

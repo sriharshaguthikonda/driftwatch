@@ -90,3 +90,33 @@ test('runGuard: oracle/composer anchor attributes pass clean (empty composer val
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('runGuard: oracle marker anchor-name lists pass clean (multi-name exchange list + negative flag "1")', async () => {
+  const { runGuard } = await import('../tools/check-no-captures.mjs');
+  const tmp = makeFixtureRoot(
+    '<div data-oracle-exchange="userUnit editMessageButton" data-oracle-negative="1"></div>'
+  );
+  try {
+    assert.deepEqual(runGuard(tmp), []);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('runGuard: rejects oracle marker values that are not anchor-name lists (digits, non-"1" negative)', async () => {
+  const { runGuard } = await import('../tools/check-no-captures.mjs');
+  const tmp = makeFixtureRoot('<div data-oracle="abc123" data-oracle-negative="yes"></div>');
+  try {
+    const failures = runGuard(tmp);
+    assert.ok(
+      failures.some((f) => f.includes('data-oracle"') && f.includes('not an anchor-name list')),
+      `expected a data-oracle failure, got: ${JSON.stringify(failures)}`
+    );
+    assert.ok(
+      failures.some((f) => f.includes('data-oracle-negative') && f.includes('not an anchor-name list')),
+      `expected a data-oracle-negative failure, got: ${JSON.stringify(failures)}`
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

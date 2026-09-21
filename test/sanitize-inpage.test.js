@@ -83,3 +83,20 @@ test('__dwSanitize output passes the privacy guard (check-no-captures)', async (
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('__dwSanitize keeps oracle marker values verbatim (agent-authored anchor names are not secrets)', () => {
+  const dom = loadInPage(
+    '<div data-turn-key="k1" data-oracle-exchange="assistantMarkdownRoot copyResponseButton">' +
+    '<button data-oracle="copyResponseButton" data-oracle-negative="1"></button>' +
+    '</div>'
+  );
+  const out = dom.window.__dwSanitize('[data-turn-key]');
+  assert.ok(
+    out.includes('data-oracle-exchange="assistantMarkdownRoot copyResponseButton"'),
+    'oracle anchor-name list must survive verbatim (the B64 run redactor must not rewrite it)'
+  );
+  assert.ok(
+    out.includes('data-oracle="copyResponseButton"') && out.includes('data-oracle-negative="1"'),
+    'oracle anchor names pass through untouched'
+  );
+});

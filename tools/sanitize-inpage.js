@@ -24,6 +24,11 @@ const ALLOWED_ATTRS = new Set([
   'data-oracle', 'data-oracle-negative', 'data-oracle-collection', 'data-oracle-exchange',
   'data-chatgpt-composer',
 ]);
+// Attributes whose values bypass redaction entirely: data-testid values like
+// "conversation-turn-1" are semantic constants, and data-oracle* markers are
+// agent-authored anchor names (e.g. "assistantMarkdownRoot"), never page
+// content — tools/check-no-captures.mjs proves the anchor-name shape.
+const VERBATIM_ATTRS = new Set(['data-testid', 'data-oracle', 'data-oracle-negative', 'data-oracle-exchange', 'data-oracle-collection']);
 const SKIP_TAGS = new Set(['script', 'style', 'link', 'noscript']);
 // Sept 2026 chatgpt.com vocabulary: the exchange root carries data-turn-key.
 // The old default ('[data-testid^="conversation-turn-"]') is dead on the live DOM.
@@ -93,9 +98,10 @@ function sanitizeElement(srcEl, outDoc, redact, stats) {
   for (const attr of [...srcEl.attributes]) {
     const name = attr.name.toLowerCase();
     if (!ALLOWED_ATTRS.has(name)) continue;
-    // data-testid values like "conversation-turn-1" are semantic constants,
-    // not identifiers — always preserved verbatim.
-    const value = name === 'data-testid' ? attr.value : redactValue(attr.value, redact);
+    // data-testid values like "conversation-turn-1" are semantic constants, and
+    // oracle markers are agent-authored anchor names — never identifiers or
+    // page content, so both pass verbatim instead of through redactValue.
+    const value = VERBATIM_ATTRS.has(name) ? attr.value : redactValue(attr.value, redact);
     outEl.setAttribute(name, value);
     stats.attrs += 1;
   }
