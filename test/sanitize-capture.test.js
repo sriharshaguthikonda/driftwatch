@@ -42,3 +42,23 @@ test('redactValue: leaves short structural slugs untouched', async () => {
   assert.equal(redactValue('conversation-turn-1', redact), 'conversation-turn-1');
   assert.equal(redactValue('composer-submit-button', redact), 'composer-submit-button');
 });
+
+test('sanitizeCapture: compound unit-key value sanitizes to placeholder + ":2:assistant" (Sept 2026 vocabulary)', async () => {
+  const { sanitizeCapture } = await import('../tools/sanitize-capture.mjs');
+  // Synthetic RFC-4122 example UUID — never real data.
+  const uuid = '123e4567-e89b-42d3-a456-426614174000';
+  const html =
+    `<div data-turn-key="${uuid}">` +
+    `<span data-content-search-unit-key="${uuid}:2:assistant"></span>` +
+    `</div>`;
+  const { body } = sanitizeCapture(html, { select: '[data-turn-key]' });
+  assert.ok(!body.includes(uuid), 'raw uuid must not survive');
+  assert.ok(
+    body.includes('data-content-search-unit-key="00000000-0000-4000-8000-000000000001:2:assistant"'),
+    'uuid replaced by the stable placeholder, index and role suffix preserved'
+  );
+  assert.ok(
+    body.includes('data-turn-key="00000000-0000-4000-8000-000000000001"'),
+    'the same uuid maps to the same placeholder in the sibling attribute'
+  );
+});

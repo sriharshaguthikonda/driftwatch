@@ -61,3 +61,19 @@ test('runGuard: real-fixture-shaped legitimate attribute values pass clean', asy
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('runGuard: sanitized Sept-2026 attribute vocabulary passes clean (unit-key placeholder + index/role suffix)', async () => {
+  const { runGuard } = await import('../tools/check-no-captures.mjs');
+  const tmp = makeFixtureRoot(
+    '<div data-turn-key="00000000-0000-4000-8000-000000000001" ' +
+    'data-content-search-unit-key="00000000-0000-4000-8000-000000000001:2:assistant" ' +
+    'data-markdown-text-style="assistant-message" data-markdown-copy="code-block" ' +
+    'data-composer-markdown=""></div>'
+  );
+  try {
+    const failures = runGuard(tmp);
+    assert.deepEqual(failures, []);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

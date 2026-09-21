@@ -25,6 +25,8 @@ const ALLOWED_ATTRS = new Set([
   'data-testid', 'data-message-author-role', 'data-turn', 'data-turn-id',
   'data-turn-id-container', 'data-scroll-anchor', 'data-virtualkeyboard', 'data-type',
   'data-oracle', 'data-oracle-negative', 'data-state',
+  'data-turn-key', 'data-content-search-unit-key', 'data-markdown-text-style',
+  'data-markdown-copy', 'data-composer-markdown',
 ]);
 
 // Attribute-value checks. Tuned against the two real committed fixtures
