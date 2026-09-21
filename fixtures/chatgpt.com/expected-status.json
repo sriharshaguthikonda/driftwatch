@@ -10,6 +10,7 @@
       "codeBlock": ["ok"],
       "copyResponseButton": ["ok"],
       "editMessageButton": ["ok"],
+      "editSurfaceForm": ["absent"],
       "composerForm": ["ok"],
       "composer": ["ok"],
       "sendButton": ["absent"],
@@ -19,6 +20,7 @@
       "pendingComposerInput": ["absent"]
     },
     "_notes": {
+      "editSurfaceForm": "no exchange-scoped edit form in the idle Sept DOM — the edit surface only mounts while a message is being edited (S0.10)",
       "sendButton": "idle-empty composer: Send button present but disabled (disabled attr), excluded by the `enabled` require; D-S2 expectation idle 0/0",
       "stopButton": "idle: no Stop control mounted in the composer form",
       "conversationTurn": "legacy-only anchor: the testid/turn vocabulary is gone from the Sept DOM and an exchange ([data-turn-key]) is not a role turn (R4)",
@@ -35,6 +37,7 @@
       "codeBlock": ["ok"],
       "copyResponseButton": ["ok"],
       "editMessageButton": ["ok"],
+      "editSurfaceForm": ["absent"],
       "composerForm": ["ok"],
       "composer": ["ok"],
       "sendButton": ["ok"],
@@ -44,6 +47,7 @@
       "pendingComposerInput": ["absent"]
     },
     "_notes": {
+      "editSurfaceForm": "no exchange-scoped edit form while composing — the edit surface only mounts during an active message edit (S0.10)",
       "stopButton": "composing: Stop not mounted; Send is the active submit control",
       "conversationTurn": "legacy-only anchor absent on Sept (R4)",
       "pendingComposerInput": "post-hydration page: the real composer form is already mounted, no pre-hydration stub present (F2)"
@@ -59,6 +63,7 @@
       "codeBlock": ["ok"],
       "copyResponseButton": ["ok"],
       "editMessageButton": ["absent"],
+      "editSurfaceForm": ["absent"],
       "composerForm": ["ok"],
       "composer": ["ok"],
       "sendButton": ["absent"],
@@ -68,6 +73,7 @@
       "pendingComposerInput": ["absent"]
     },
     "_notes": {
+      "editSurfaceForm": "no exchange-scoped edit form while streaming — the edit surface only mounts during an active message edit (S0.10)",
       "editMessageButton": "while streaming, the Edit message control is removed from every user unit (measured live 2026-09-21); min:0 anchor",
       "sendButton": "generation active: Send removed from the composer form while Stop is present",
       "conversationTurn": "legacy-only anchor absent on Sept (R4)",
@@ -84,6 +90,7 @@
       "codeBlock": ["ok"],
       "copyResponseButton": ["ok"],
       "editMessageButton": ["absent"],
+      "editSurfaceForm": ["absent"],
       "composerForm": ["ok"],
       "composer": ["ok"],
       "sendButton": ["absent"],
@@ -93,6 +100,7 @@
       "pendingComposerInput": ["absent"]
     },
     "_notes": {
+      "editSurfaceForm": "no exchange-scoped edit form while streaming — the edit surface only mounts during an active message edit (S0.10)",
       "editMessageButton": "while streaming, the Edit message control is removed from every user unit (measured live 2026-09-21)",
       "sendButton": "generation active: Send removed while Stop is present",
       "conversationTurn": "legacy-only anchor absent on Sept (R4)",
@@ -102,9 +110,11 @@
   "2026-09-21-synthetic-sidebar-stop": {
     "anchors": {
       "stopButton": ["ok"],
+      "editSurfaceForm": ["absent"],
       "pendingComposerInput": ["absent"]
     },
     "_notes": {
+      "editSurfaceForm": "synthetic Stop-decoy page: no exchange-scoped edit form (S0.4)",
       "pendingComposerInput": "decoy fixture has no pre-hydration stub (F2)"
     }
   },
@@ -113,12 +123,14 @@
       "pendingComposerInput": ["ok"],
       "conversationTurn": ["absent"],
       "editMessageButton": ["absent"],
+      "editSurfaceForm": ["absent"],
       "sendButton": ["absent"],
       "stopButton": ["absent"]
     },
     "_notes": {
       "conversationTurn": "pre-hydration stub page has no turns yet",
       "editMessageButton": "no exchange exists before the real composer mounts",
+      "editSurfaceForm": "pre-hydration stub page: no exchanges and no edit surface (F2)",
       "sendButton": "the visible Send is a disabled type=button decoy outside any form, not the composerForm-scoped sendButton anchor",
       "stopButton": "no composer form mounted yet, so no Stop control exists"
     }
@@ -126,6 +138,7 @@
   "2026-09-21-synthetic-composer-decoys": {
     "anchors": {
       "composerForm": ["degraded"],
+      "editSurfaceForm": ["ok"],
       "composer": ["ok"],
       "sendButton": ["ok"],
       "responseActionBar": ["ok"],
@@ -133,6 +146,7 @@
     },
     "_notes": {
       "composerForm": "real form carries no data-chatgpt-composer attr on purpose, to exercise strategy 2 (form:has([data-composer-markdown]):not([data-turn-key] form)); a decoy edit-mode form inside the first exchange is excluded by the :not() guard",
+      "editSurfaceForm": "decoy edit-mode form (S0.10 shape: attribute-less form inside the exchange holding a [data-composer-markdown] contenteditable) resolves in exchange 1 only; document-wide audit sees only it because the real composer form sits outside any [data-turn-key]",
       "composer": "resolved inside the strategy-2-won composerForm; the decoy's composer-markdown div sits inside the decoy form, never inside the resolved composerForm, so it cannot match",
       "sendButton": "state composing: the real Send is inside the resolved composerForm; the decoy Send (type=submit aria-label=Send) is data-oracle-negative and excluded by inside:composerForm",
       "responseActionBar": "document-wide pick:last resolves the second (real) exchange's bar via strategy 1 (has-copy-and-more); the first exchange's Copy-less bar independently exercises strategy 2 (has-more-actions) via its own per-exchange resolve",
@@ -145,12 +159,14 @@
       "assistantMessage": ["degraded"],
       "copyResponseButton": ["degraded"],
       "composer": ["degraded"],
+      "editSurfaceForm": ["absent"],
       "pendingComposerInput": ["absent"]
     },
     "_notes": {
       "assistantMessage": "July fixture: Sept unit-key strategy matches nothing; legacy data-message-author-role wins at index 1",
       "copyResponseButton": "July button is aria-label=\"Copy response\" + testid inside the Response-actions group; testid strategy wins at index 1",
       "composer": "July composer is #prompt-textarea; prompt-textarea strategy wins at index 1 inside the legacy unified-composer form",
+      "editSurfaceForm": "July DOM predates the Sept edit-mode form vocabulary — no [data-composer-markdown] inside any exchange",
       "pendingComposerInput": "July capture predates the pre-hydration stub; no such element in this DOM (F2)"
     }
   },
@@ -159,11 +175,13 @@
       "conversationTurn": ["ok"],
       "assistantMessage": ["degraded"],
       "copyResponseButton": ["degraded"],
+      "editSurfaceForm": ["absent"],
       "pendingComposerInput": ["absent"]
     },
     "_notes": {
       "assistantMessage": "July fixture: legacy data-message-author-role wins at index 1",
       "copyResponseButton": "Copy response + testid inside the Response-actions group; testid strategy wins at index 1",
+      "editSurfaceForm": "July DOM predates the Sept edit-mode form vocabulary — no [data-composer-markdown] inside any exchange",
       "pendingComposerInput": "legacy turns.html capture predates the pre-hydration stub; no such element in this DOM (F2)"
     }
   },
@@ -172,10 +190,12 @@
       "conversationTurn": ["ok"],
       "assistantMessage": ["degraded"],
       "copyResponseButton": ["ok"],
+      "editSurfaceForm": ["absent"],
       "pendingComposerInput": ["absent"]
     },
     "_notes": {
       "assistantMessage": "March fixture: legacy data-message-author-role wins at index 1",
+      "editSurfaceForm": "March DOM predates the Sept edit-mode form vocabulary — no [data-composer-markdown] inside any exchange",
       "pendingComposerInput": "legacy turns.html capture predates the pre-hydration stub; no such element in this DOM (F2)"
     }
   }

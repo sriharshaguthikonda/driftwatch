@@ -23,6 +23,7 @@ const EXCHANGE_INNER = (key) =>
   '<button aria-label="Copy message">x</button>' +
   '<button aria-label="Edit message">x</button>' +
   '</div>' +
+  '<form><div data-composer-markdown contenteditable="true" role="textbox">x</div></form>' +
   '<div data-content-search-unit-key="' + key + ':1:assistant">' +
   '<div data-markdown-text-style="assistant-message">' +
   '<div data-markdown-copy="code-block"><button>x</button></div>' +
@@ -131,6 +132,14 @@ test('per-exchange anchors land on the right element in each exchange', () => {
       'exactly one copyResponseButton per exchange');
     assert.equal(ex.querySelectorAll('[data-oracle-exchange~="editMessageButton"]').length, 1,
       'exactly one editMessageButton per exchange');
+    assert.equal(ex.querySelectorAll('[data-oracle-exchange~="editSurfaceForm"]').length, 1,
+      'exactly one editSurfaceForm per exchange');
+
+    // editSurfaceForm is the exchange-scoped edit-mode form holding the
+    // composer-markdown contenteditable (S0.10 shape).
+    assert.equal(ex.querySelector('[data-oracle-exchange~="editSurfaceForm"]'),
+      ex.querySelector('form:has([data-composer-markdown])'),
+      'editSurfaceForm lands on the edit-mode form inside the exchange');
 
     // responseActionBar is the parent of the More actions button.
     const more = ex.querySelector('button[aria-label="More actions"]');
@@ -209,6 +218,7 @@ test('return summary for a composing run on the main page', () => {
   assert.equal(result.marked.userUnit, 2, 'userUnit marked in both exchanges');
   assert.equal(result.marked.codeBlock, 2, 'codeBlock marked twice');
   assert.equal(result.marked.assistantUnit, 2, 'assistantUnit marked in both exchanges');
+  assert.equal(result.marked.editSurfaceForm, 2, 'editSurfaceForm marked in both exchanges');
 });
 
 test('invalid state throws: bogus string and null', () => {

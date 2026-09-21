@@ -157,6 +157,29 @@ Every strategy may also carry:
 - `id` — string, required, identifies the strategy in reports.
 - `requires` — array combining any of `connected`, `enabled`, `visible`, `inside:<anchorName>`. Evaluated *after* the selector matches, to filter plausible-but-wrong elements that raw cardinality can't see.
 
+### Pack `data` — site-specific selector lists
+
+Anchors cover single elements; some site knowledge is a *list*. A pack may
+carry a top-level `"data"` object beside `"anchors"`, each key an array of CSS
+selector strings:
+
+```json
+"data": {
+  "citationExclusions": ["[data-testid*=\"citation\"]", "cite"],
+  "ignoreSelectors": ["#content-root", "#content-root *"]
+}
+```
+
+The engine never interprets `data` — `compile()` and `audit()` read `anchors`
+only, and `build.js` bakes the object into `dist/` untouched. Consumers read
+the lists verbatim (`dw.packs['chatgpt.com'].data.<key>`), typically exclusion
+lists, selection allowlists, or the selector literals an injected `<style>`
+rule needs (`styleTargetSelectors` — a style block takes selector strings, not
+resolved elements). `test/pack-data.test.js` lints every value: a non-empty
+array of strings, each parsing as a selector in jsdom. Entries are kept only
+when live-verified or explicitly unverified; anything measured 0-match on the
+live DOM is dropped, and no entry ever carries page text.
+
 ### `expected` / state
 
 An anchor's default `min`/`max` can be overridden per named state:

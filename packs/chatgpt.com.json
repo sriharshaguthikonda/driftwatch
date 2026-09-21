@@ -121,6 +121,14 @@
         { "id": "stop.aria-prefix", "css": "button[aria-label^=\"Stop\"]:not([disabled])", "requires": ["connected", "enabled", "inside:composerForm"] }
       ]
     },
+    "editSurfaceForm": {
+      "risk": "observe",
+      "min": 0,
+      "scope": "exchange",
+      "strategies": [
+        { "id": "edit-form.turn-key-composer-markdown", "css": "[data-turn-key] form:has([data-composer-markdown][contenteditable=\"true\"])", "requires": ["connected"] }
+      ]
+    },
     "assistantMessage": {
       "risk": "observe",
       "pick": "last",
@@ -151,5 +159,42 @@
         { "id": "pending.stub-attr", "css": "textarea[data-pending-input-initialized]", "requires": ["connected"] }
       ]
     }
+  },
+  "data": {
+    "citationExclusions": [
+      "[data-testid*=\"citation\"]",
+      "a[data-testid=\"chatgpt-citation\"]",
+      "[data-testid=\"chatgpt-library-file-citation\"]",
+      ".webpage-citation-pill",
+      ".citation-pill",
+      "[data-source]",
+      "cite"
+    ],
+    "ignoreSelectors": [
+      ".settings-header",
+      ".sr-only",
+      "[class*=\"code\"]",
+      "[class*=\"language-\"]",
+      "[class*=\"highlight\"]",
+      ".token",
+      "#content-root",
+      "#content-root *"
+    ],
+    "nativeSelectionAllowlist": [
+      "[data-content-search-unit-key$=\":user\"]",
+      "[data-content-search-unit-key$=\":user\"] *",
+      "[data-content-search-unit-key$=\":assistant\"]",
+      "[data-content-search-unit-key$=\":assistant\"] *",
+      "[data-markdown-text-style=\"assistant-message\"]",
+      "[data-markdown-text-style=\"assistant-message\"] *"
+    ],
+    "styleTargetSelectors": [
+      "[data-content-search-unit-key$=\":user\"]",
+      "[data-content-search-unit-key$=\":user\"] *",
+      "[data-content-search-unit-key$=\":assistant\"]",
+      "[data-content-search-unit-key$=\":assistant\"] *",
+      "[data-markdown-text-style=\"assistant-message\"]",
+      "[data-markdown-text-style=\"assistant-message\"] *"
+    ]
   }
 }

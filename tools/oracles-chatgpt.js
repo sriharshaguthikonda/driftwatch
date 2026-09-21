@@ -125,6 +125,15 @@ window.__dwMarkOracles = function (state) {
     for (const cb of [...ex.querySelectorAll('[data-markdown-copy="code-block"]')]) {
       addToken(cb, 'data-oracle-collection', 'codeBlock', marked);
     }
+    // Edit surface form: the attribute-less edit-mode form holding a
+    // composer-markdown contenteditable inside the exchange (transient, 0 or 1).
+    const editForms = ex.querySelectorAll('form:has([data-composer-markdown][contenteditable="true"])');
+    for (const ef of [...editForms]) {
+      addToken(ef, 'data-oracle-exchange', 'editSurfaceForm', marked);
+    }
+    if (editForms.length > 1) {
+      warnings.push('editSurfaceForm exchange ' + i + ': found ' + editForms.length + ', expected at most 1');
+    }
 
     // Negatives: decoys no anchor may resolve to (message/share/rate buttons,
     // code-block controls).
