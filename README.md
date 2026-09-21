@@ -271,6 +271,10 @@ allow-list implied by the pack's own strategies, and match counts. They do not r
 - No text-content matching — fragile and language-dependent.
 - No polling loop — `canary(pack, doc, onDegrade)` runs once per call; the caller supplies the interval (`setInterval`, `MutationObserver` debounce, whatever they already run).
 
+## Roadmap
+
+Current work (churn event #2, chatgpt.com 2026-09) and deferred items: [docs/ROADMAP.md](docs/ROADMAP.md). Prior-art record for repair tooling: [docs/Research/landscape.yaml](docs/Research/landscape.yaml).
+
 ## License
 
 MIT

@@ -1,0 +1,219 @@
+# docs/Research/landscape.yaml — durable prior-art record for driftwatch.
+#
+# THE RULE: nothing is ever permanently rejected. Every entry carries
+# recheck_after, because a candidate killed by immaturity or a dependency bug
+# is a candidate a later release un-kills.
+#
+# This file EXTENDS the 2026-07-10 pass already on record at
+# Tampermonkey/docs/plans/churn-resistant-framework/PRIOR-ART.md and
+# Tampermonkey/docs/Research/{website_churn_selectors.md,
+# self_healign_selector_drop_in _chatgpt_research.txt}. That pass is not
+# repeated here; only what it covered thinly (capability a) or not at all
+# (b, c, d) is added, plus anything new since 2026-07-10.
+#
+# VERIFICATION: every URL below returned HTTP 200 to `curl -sL -o /dev/null
+# -w '%{http_code}'` on 2026-09-21, checked directly, not caveated. 8 URLs
+# were tried and discarded as non-200 during this pass (npmjs.com package
+# pages return 403 to scripted curl for sanitize-html, @firebase/remote-config,
+# playwright-mender and @svatah/yam-healer — the registry API and/or GitHub
+# repo for each of those returned 200 and is what is cited instead; the COLOR
+# locator-repair paper's semanticscholar page and ieeexplore page returned
+# 202, and its dl.acm.org and doi.org mirrors returned 403/202 — no
+# verified-200 citation exists for COLOR at all, so it is named in prose below
+# but carries no candidate entry or URL).
+#
+# ── (a) repair assistance: given an old sanitized DOM snapshot where an
+# anchor resolved and a new one where it broke, propose ranked candidate
+# selectors for the same element in the new DOM (element re-identification
+# across page versions) ──
+#
+# The July pass already concluded (independently, via ChatGPT deep research)
+# that "there is no good drop-in self-healing selector library for a
+# Manifest V3 content script or userscript" and recommended building driftwatch's
+# own Similo-style scorer. This pass re-ran that search with 2026-09
+# vocabulary and found TWO things the July pass could not have found because
+# they did not exist yet — both pushed in the last seven weeks:
+#
+#   - SvatahLabs/Yam (packages/bindings/src/relocalize.ts, code-level read):
+#     a maintained, tested, Apache-2.0 implementation of almost exactly the
+#     algorithm the July research recommended writing from scratch — a
+#     5-feature weighted fingerprint scorer (attrJaccard 0.30, textSim 0.25,
+#     neighbourSim 0.20, rolePathSim 0.15, boxProximity 0.10) with an explicit
+#     threshold (0.72) AND a margin-over-runner-up ambiguity check (0.10) that
+#     refuses to guess between two similar-scoring elements — the same
+#     fail-closed posture driftwatch already has in `audit()`'s `ambiguous`
+#     status. It cannot be adopted as a dependency: it resolves against a
+#     LIVE `AgentSurface` (a live-automation abstraction with async
+#     `snapshot()`/`describe()`/`locate()`, built for driving a live browser
+#     agent session), not two static DOM snapshots, and it pulls in two more
+#     workspace packages (`@svatah/yam-schema`, `@svatah/yam-surface`) that
+#     assume that runtime. It is 1 day old at time of writing (first GitHub
+#     push in this repo visible 2026-09-21) with 1 star — read as promising,
+#     not as proven. The math (five named, justified similarity measures,
+#     threshold+margin decision) is directly portable to a
+#     snapshot-vs-snapshot repair/candidate-report.ts and is the single best
+#     piece of evidence this pass adds for capability (a).
+#   - Sidsai/PlaywrightLocatorMender (packages/core/src/scoring/{heuristic,
+#     features}.ts, code-level read): a CI tool that reads a failed
+#     Playwright run's trace.zip, extracts DOM candidates, scores them with
+#     5 EQUAL-weighted heuristic features (attribute-overlap with a
+#     prefix/suffix-aware identifier similarity, role match, text similarity,
+#     structural-depth proximity, a twin/near-duplicate uniqueness penalty),
+#     optionally escalates the top candidates to an LLM reranker (with
+#     redaction and calibration steps), then posts a CI/PR comment for a
+#     HUMAN to approve — never auto-merges. This is driftwatch's own planned
+#     Phase F shape (candidate-report generator → optional LLM ranking →
+#     human-approved patch, no auto-merge) already built, tested against a
+#     mutation-testing corpus, and documented (packages/bench/RESULTS-heuristics.md).
+#     It cannot be adopted directly either: its input is a Playwright
+#     trace.zip and its output is a patch to a `.spec.ts`/`.java`/`.py` TEST
+#     FILE, not a JSON pack strategy list, and its whole harness is built
+#     around Playwright's own test/trace format. The heuristic-feature design
+#     and the offline→optional-LLM-escalation→human-approval pipeline shape
+#     are the reusable part.
+#
+#   Neither is vendorable. Both are ported-pattern material for
+#   `driftwatch/src/repair/` when Phase F starts, and both should be
+#   RE-CHECKED before that work begins — they are new enough that "read the
+#   code, do not build on the package" is the only responsible verdict today.
+#   The academic lineage the July research already cited (Similo, VON Similo,
+#   HybridSimilo) is the same lineage WATER, COLOR and LML belong to
+#   (searched this pass on the user's explicit instruction): all three are
+#   papers, none has a maintained browser-ready package (WATER's and COLOR's
+#   own citation pages returned non-200 and are not linked below; LML's paper
+#   PDF is), and this reconfirms rather than changes the July conclusion.
+#
+# ── (b) live-page anchor audit harness: run the pack's audit against the
+# real logged-in page in a real browser and diff results over time ──
+#
+# driftwatch already has the ON-PAGE half of this (`audit()`, `canary()` —
+# src/canary.js) — what's missing per the roadmap is the OUTER LOOP: running
+# that audit against the real page on a schedule and recording drift over
+# time. No candidate found does this inside an authenticated browser
+# extension/userscript context; that combination (real login session +
+# in-page audit + history) is not something the wider ecosystem has built,
+# because most "monitor a page and alert on change" tools are server-side
+# headless-browser services that do not have the user's session.
+# dgtlmoon/changedetection.io (34.4k stars, Apache-2.0, pushed today) is the
+# strongest ADJACENT pattern: CSS-selector-scoped extraction, scheduled
+# re-fetch, diff-over-time, alerting — architecturally the harness half of
+# (b), just server-side and unauthenticated. Nothing here is vendorable into
+# driftwatch (Python, Flask, Playwright-server, wrong runtime entirely); the
+# scheduling/diff/alert SHAPE is the reusable part, and driftwatch's own
+# `canary()` already implements the in-page equivalent of its diff step
+# (fingerprint-changed → act). Genuine gap remains for the "wrapped inside
+# the extension, against the logged-in page" combination.
+#
+# ── (c) sanitized DOM snapshot capture: strip text/PII, keep structure +
+# allow-listed attributes, for use as test fixtures ──
+#
+# Two rounds of differently-worded search (gh repos/code, npm, HN) returned
+# ZERO direct hits for "DOM-structure-only, attribute-allowlisted, PII-safe
+# fixture sanitizer" as a named OSS tool — confirmed absence, not a broken
+# query (both rounds used distinct vocabulary; see gate_runs below for the
+# exact terms spent). The five adjacent tools that DO exist all solve a
+# different problem: DOMPurify and sanitize-html are XSS sanitizers (they
+# PRESERVE text and most markup, removing only dangerous tags/attrs — the
+# opposite goal of stripping ALL text); rrweb's privacy masking (maskTextClass
+# etc.) is built for session-replay recording, so it masks text in place
+# rather than deleting the DOM subtree it came from, and it still ships a
+# full node tree with style/position data driftwatch's fixtures don't need;
+# cds-snc/sanitize-pii and t11z/pii-data-sanitizer operate on plain TEXT
+# strings, not DOM trees, so they have no concept of "structure" to keep at
+# all. None of the five is a build-on candidate for this capability. This
+# capability is also the one where driftwatch is NOT starting from zero: it
+# already has `tools/sanitize-capture.mjs` (structural rebuild + attribute
+# allowlist + stable-placeholder redaction of UUID/hex/base64-shaped values)
+# and `tools/check-no-captures.mjs` (a CI guard enforcing the same rules on
+# everything already committed) — see `unique_here` below. The prior-art
+# search here confirms there was nothing to adopt instead of building it,
+# which is a useful (if negative) finding in its own right.
+#
+# ── (d) remote selector packs/overlays with preflight + pin/kill switch for
+# extensions (stale-while-revalidate config updates) ──
+#
+# No OSS project ships this EXACT shape — "MV3-legal JSON-only remote config,
+# with schema validation, last-known-good fallback, pin/kill switch,
+# purpose-built for a browser extension" — as a reusable library; two rounds
+# of search (gh repos, issues) came back empty or noise both times. The July
+# pass already identified the two best PATTERN references (Dark Reader's
+# remote-config-with-packaged-fallback, uBlock's declarative filter-list
+# update cadence) and this pass found nothing beyond them in that specific
+# shape. What this pass adds is the ADJACENT class: general-purpose
+# feature-flag/remote-config platforms — Unleash (Apache-2.0 JS client,
+# AGPL-3.0 server), GrowthBook (custom licence, verify before use), Flagsmith
+# (BSD-3-Clause) — which all implement local-cache + stale-while-revalidate +
+# kill-switch as a first-class primitive. None is a fit to vendor: each
+# assumes a flag-management BACKEND/SaaS (account, project, environment
+# concept) that has nothing to do with "here is a JSON pack for this site's
+# selectors", and pulling one in as a dependency to get
+# stale-while-revalidate semantics would be substantially heavier than
+# writing driftwatch's own ~100-line loader against Dark Reader's already-
+# validated pattern. Chrome's own remote-hosted-code policy page (cited
+# below) is the authoritative constraint these all have to satisfy and is
+# worth keeping as a primary source, not a candidate.
+
+meta:
+  updated: 2026-09-21
+  gate: N/A — no ADR file for this gate yet in this repo; enforced by the
+    user's global CLAUDE.md Prior-Art Gate section and the prior-art-gate
+    skill at C:/Users/deletable/.claude/skills/prior-art-gate/.
+  verified_key: >
+    metadata = GitHub/npm API only, description read, code not opened.
+    source = actual source file(s) read and cited by path.
+    live = it was RUN on this machine. Only "live" may close a build
+    decision. Nothing below is "live" — this is a planning-phase gate,
+    no code changes were made in this pass.
+  rule: nothing is permanently rejected; every entry carries recheck_after.
+  prior_pass: >
+    Tampermonkey/docs/plans/churn-resistant-framework/PRIOR-ART.md and
+    Tampermonkey/docs/Research/{website_churn_selectors.md,
+    self_healign_selector_drop_in _chatgpt_research.txt}, both dated
+    2026-07-10. Candidates already recorded there (google/semantic-locators,
+    eps1lon/dom-accessibility-api, antonmedv/finder, css-selector-generator,
+    Healenium, ROBULA+, Similo/VON-Similo/HybridSimilo papers,
+    pionxzh/chatgpt-exporter, KudoAI/chatgpt.js, darkreader/darkreader,
+    gorhill/uBlock, philc/vimium, refined-github/refined-github,
+    ajayyy/SponsorBlock, mozilla/fathom, stagehand, browser-use, Midscene.js)
+    are NOT re-listed below unless this pass adds new evidence about them.
+
+# One block per capability this gate ran against in THIS pass.
+gate_runs:
+  - date: 2026-09-21
+    question: >
+      (a) repair assistance — given an old sanitized DOM snapshot where an
+      anchor resolved and a new one where it broke, propose ranked candidate
+      selectors for the same element in the new DOM (element re-identification
+      across page versions).
+    surfaces: [github-repos, github-code, npm, hn, arxiv, model-web-search]
+    vocabulary: [
+      "self-healing locator library javascript npm open source",
+      "element re-identification across DOM versions",
+      "DOM diff element matching before after snapshot",
+      "self-healing locator", "element relocalization", "selector repair",
+      "locator healing", "WATER algorithm web element relocation",
+      "COLOR algorithm web element locator repair", "LML locator language",
+      "accessibility tree diff", "visual element matching locator", "ROBULA"
+    ]
+    saturated: true
+    new_classes_in_last_round: >
+      none — the academic-name round (WATER/COLOR/LML/ROBULA) surfaced only
+      more papers in the same lineage the July pass already cited (Similo
+      family); no new mechanism class. Saturation reached after the
+      SvatahLabs/Yam + PlaywrightLocatorMender + academic rounds.
+    citations_discarded_non_200: 6
+    verdict: build
+    answer: >
+      Nine implementations found beyond the July list (SvatahLabs/Yam,
+      Sidsai/PlaywrightLocatorMender, mdowis/anansi, onemysoup/phoenix,
+      Someone-anon-coder/Eir, ast-fortiss-tum's VON-Similo thesis code,
+      cyluxx/robula-plus [carried forward], plus WATER/COLOR/LML as papers),
+      two read at code level (Yam's relocalize.ts+resolver.ts,
+      PlaywrightLocatorMender's heuristic.ts+features.ts). Neither is
+      adoptable as a dependency (wrong input shape: live agent surface vs.
+      Playwright trace.zip, neither is "two DOM snapshots in, ranked
+      selectors out"). Both validate driftwatch's own planned design
+      (weighted multi-feature fingerprint scoring + threshold/margin
+      ambiguity refusal + human-approved patch, no auto-merge) and should be
+      re-read for their exact feature weights/formulas when Phase F starts —
+      see recheck_after on each entry.
