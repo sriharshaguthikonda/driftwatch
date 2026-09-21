@@ -73,6 +73,46 @@ function missingFixturePacks(packNames, fixtures) {
   return packNames.filter((name) => !fixtures.some((f) => f.pack === name));
 }
 
+// F6: synthetic fixtures (hand-written decoys/edge cases, never real captures)
+// must never become the frontier a pack is graded against. A dir opts in via
+// `"_synthetic": true` in its state.json (documented alongside state — no
+// separate marker file; see fixtureState() below for the same file).
+function isSyntheticFixtureDir(f) {
+  const p = path.join(path.dirname(f.path), 'state.json');
+  if (!fs.existsSync(p)) return false;
+  const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+  return !!(raw && raw._synthetic === true);
+}
+
+// Newest non-synthetic dated dir per pack (last write wins = newest, fixtures
+// sorted ascending by discoverFixtures). Synthetic dirs are excluded so a
+// hand-written decoy can never become the strict-ratchet frontier fixture.
+function computeNewestDatedDirByPack(fixtures) {
+  const out = {};
+  for (const f of fixtures) {
+    if (!f.isCurrent && !isSyntheticFixtureDir(f)) out[f.pack] = f.dir;
+  }
+  return out;
+}
+
+test('F6: synthetic fixture dirs are excluded from the frontier (newestDatedDirByPack)', () => {
+  const os = require('node:os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'driftwatch-synthetic-'));
+  try {
+    fs.mkdirSync(path.join(tmp, 'testpack', '2026-01-01-old'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'testpack', '2026-01-01-old', 'a.html'), '<div></div>');
+    fs.mkdirSync(path.join(tmp, 'testpack', '2026-02-01-synthetic'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'testpack', '2026-02-01-synthetic', 'a.html'), '<div></div>');
+    fs.writeFileSync(path.join(tmp, 'testpack', '2026-02-01-synthetic', 'state.json'), JSON.stringify({ state: 'idle', _synthetic: true }));
+    // No current/ dir at all for this pack — its frontier can only come from a dated dir.
+    const found = discoverFixtures(tmp);
+    const newest = computeNewestDatedDirByPack(found);
+    assert.equal(newest.testpack, '2026-01-01-old', 'the synthetic dir (dated AFTER the real one) must never win the frontier');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Unit tests: compile()
 // ---------------------------------------------------------------------------
@@ -446,6 +486,45 @@ test('missingFixturePacks: flags a pack with zero fixtures even when a sibling p
 const fixtures = discoverFixtures();
 const packs = loadPacks();
 
+// R4: per-pack ratchet table. fixtures/<pack>/expected-status.json maps fixture
+// dir -> { anchors: { anchorName: [allowed statuses] }, _notes: { anchor: reason } }.
+// "every anchor ok" is never the bar — legitimately-absent anchors (legacy-only
+// conversationTurn, state-conditioned sendButton/stopButton, streaming-removed
+// editMessageButton) are pinned to `absent` here so they stop reading as drift.
+function loadExpectedStatus(packName) {
+  const p = path.join(FIXTURES_ROOT, packName, 'expected-status.json');
+  if (!fs.existsSync(p)) return null;
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+
+const perPackExpected = {};
+for (const packName of Object.keys(packs)) perPackExpected[packName] = loadExpectedStatus(packName);
+
+// S2.2: a fixture dir may carry state.json ({"state": "idle"|"composing"|"streaming"}).
+// That state MUST reach audit() and every oracle/negative resolve() — a stateless
+// call on a state-conditioned anchor returns unknown-state and passes vacuously.
+function fixtureState(f) {
+  const p = path.join(path.dirname(f.path), 'state.json');
+  if (!fs.existsSync(p)) return undefined;
+  const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+  return raw && raw.state ? { state: raw.state } : undefined;
+}
+
+// Marker attribute values are space-separated token lists (matched with ~=).
+function markerTokens(doc, attr) {
+  const out = new Set();
+  for (const el of doc.querySelectorAll('[' + attr + ']')) {
+    for (const t of (el.getAttribute(attr) || '').split(/\s+/)) if (t) out.add(t);
+  }
+  return out;
+}
+
+function elsSetEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (const x of a) if (b.indexOf(x) === -1) return false;
+  return true;
+}
+
 // Per-pack ratchet (F5): every pack declared in packs/*.json must have at
 // least one discoverable fixture. Asserted per pack, not per total count, so
 // a newly added pack with zero fixtures fails loudly by name instead of
@@ -457,13 +536,85 @@ for (const packName of Object.keys(packs)) {
   });
 }
 
+test('expected-status: a pack with an ratchet table lists every fixture dir (deleting a row silently weakens the ratchet)', () => {
+  for (const packName of Object.keys(packs)) {
+    const expected = perPackExpected[packName];
+    if (!expected) continue;
+    for (const f of fixtures.filter((x) => x.pack === packName)) {
+      assert.ok(expected[f.dir], `fixtures/${packName}/expected-status.json is missing a row for "${f.dir}"`);
+      assert.ok(expected[f.dir].anchors && Object.keys(expected[f.dir].anchors).length > 0,
+        `fixtures/${packName}/expected-status.json row "${f.dir}" has no anchors`);
+    }
+  }
+});
+
+test('F3: expected-status.json content rules — no cell anywhere allows "broken" or "ambiguous"; cells under current/ allow only "ok"/"absent"', () => {
+  const BANNED = new Set(['broken', 'ambiguous']);
+  for (const packName of Object.keys(packs)) {
+    const expected = perPackExpected[packName];
+    if (!expected) continue;
+    for (const [dir, row] of Object.entries(expected)) {
+      if (dir.startsWith('_')) continue; // "_comment" etc, not a fixture dir
+      const anchors = row && row.anchors ? row.anchors : {};
+      for (const [name, allowed] of Object.entries(anchors)) {
+        for (const status of allowed) {
+          assert.ok(!BANNED.has(status),
+            `${packName}/expected-status.json "${dir}"/"${name}" allows "${status}" — broken/ambiguous must never be ratcheted in, fix the pack or the fixture instead`);
+        }
+        if (dir === 'current' || dir.indexOf('current/') === 0) {
+          for (const status of allowed) {
+            assert.ok(status === 'ok' || status === 'absent',
+              `${packName}/expected-status.json "${dir}"/"${name}" allows "${status}" — cells under current/ may only allow "ok" or "absent"`);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('F6: with current/ fixtures hidden, the chatgpt.com frontier is 2026-07-28-desktop — never a synthetic dir', () => {
+  const nonCurrent = fixtures.filter((f) => f.pack === 'chatgpt.com' && !f.isCurrent);
+  const newest = computeNewestDatedDirByPack(nonCurrent);
+  assert.equal(newest['chatgpt.com'], '2026-07-28-desktop');
+});
+
+test('pack lint (R1): no strategy uses inside:exchangeRoot; per-exchange anchors only reference per-exchange anchors; document anchors only reference composerForm', () => {
+  for (const [packName, pack] of Object.entries(packs)) {
+    assert.ok(pack.anchors && typeof pack.anchors === 'object', `${packName}: no anchors`);
+    const perExchange = new Set(
+      Object.entries(pack.anchors).filter(([, a]) => a && a.scope === 'exchange').map(([n]) => n)
+    );
+    for (const [name, a] of Object.entries(pack.anchors)) {
+      assert.ok(!a.scope || a.scope === 'exchange',
+        `${packName}/${name}: unknown scope "${a.scope}" (only "exchange" is defined)`);
+      for (const s of a.strategies || []) {
+        for (const req of s.requires || []) {
+          if (req.indexOf('inside:') !== 0) continue;
+          const target = req.slice(7);
+          // An exchange scope root is excluded by inside: (core.js resolves
+          // descendants only), so inside:exchangeRoot can never match (R1).
+          assert.notEqual(target, 'exchangeRoot',
+            `${packName}/${name}: strategy ${s.id} uses inside:exchangeRoot — resolve the anchor with the exchange element as scope instead`);
+          if (a.scope === 'exchange') {
+            // inside: under an exchange scope may only name strict descendants
+            // of the exchange, i.e. other per-exchange anchors (R1 rule 3).
+            assert.ok(perExchange.has(target),
+              `${packName}/${name}: per-exchange anchor's ${req} targets "${target}", which is not a strict descendant of an exchange`);
+          } else {
+            // Document-scoped inside: is reserved for singletons (R1 rule 3).
+            assert.equal(target, 'composerForm',
+              `${packName}/${name}: document-scoped anchor may only use inside:composerForm, not ${req}`);
+          }
+        }
+      }
+    }
+  }
+});
+
 if (fixtures.length === 0) {
   test('fixtures: none discovered yet (skipped)', { skip: 'fixtures/**/*.html not present yet' }, () => {});
 } else {
-  const newestDatedDirByPack = {};
-  for (const f of fixtures) {
-    if (!f.isCurrent) newestDatedDirByPack[f.pack] = f.dir; // last write per pack wins = newest (sorted ascending)
-  }
+  const newestDatedDirByPack = computeNewestDatedDirByPack(fixtures); // F6: synthetic dirs excluded
 
   for (const f of fixtures) {
     test(`fixture: ${f.pack}/${f.dir}/${f.file}`, () => {
@@ -472,24 +623,46 @@ if (fixtures.length === 0) {
 
       const html = fs.readFileSync(f.path, 'utf8');
       const doc = docFrom(html, f.pack);
-      const report = audit(pack, doc);
+      const opts = fixtureState(f); // S2.2: {state} from the fixture's state.json
+      const report = audit(pack, doc, opts);
       // fixtures/<pack>/current/<variant>/ is always the strict frontier (several
       // variants can be "current" at once: mobile, streaming, logged-out...). Dated
       // dirs only get the strict ratchet as a fallback when no current/ exists yet.
       const isNewest = f.isCurrent || (!f.hasCurrentSibling && f.dir === newestDatedDirByPack[f.pack]);
 
-      // A fixture is a DOM slice, not always a full page (e.g. "*-turns" fixtures
-      // capture only the conversation-turn subtree, never composer/send/stop). If the
-      // fixture declares oracle targets, that IS its declared scope: only anchors named
-      // by a data-oracle marker are checked here. No oracle markers at all → full-page
-      // fixture, check every anchor (original behavior).
-      const scopedAnchors = new Set(
-        Array.from(doc.querySelectorAll('[data-oracle]')).map((el) => el.getAttribute('data-oracle'))
-      );
+      // A fixture is a DOM slice, not always a full page. Its declared scope is the
+      // union of every oracle marker token (document, per-exchange and collection):
+      // only those anchors are status-checked unless the R4 expected-status table
+      // names the anchor explicitly. No markers and no table -> full-page check.
+      const expected = perPackExpected[f.pack] && perPackExpected[f.pack][f.dir];
+      const expectedRow = expected && expected.anchors ? expected.anchors : null;
+      if (expectedRow) {
+        for (const name of Object.keys(expectedRow)) {
+          assert.ok(pack.anchors[name], `${f.dir}: expected-status.json lists unknown anchor "${name}"`);
+        }
+      }
+      const scopedAnchors = new Set([
+        ...markerTokens(doc, 'data-oracle'),
+        ...markerTokens(doc, 'data-oracle-exchange'),
+        ...markerTokens(doc, 'data-oracle-collection'),
+      ]);
 
       for (const [name, a] of Object.entries(report.anchors)) {
+        const allowed = expectedRow && expectedRow[name];
+        if (allowed) {
+          // R4: the ratchet bar is "status is in its allowed set", never "all ok".
+          assert.ok(allowed.includes(a.status),
+            `${f.dir}: anchor "${name}" status "${a.status}" not in allowed [${allowed.join(', ')}]` +
+            ` — winner ${a.strategyId}, tried ${a.attempts.map((x) => `${x.id}×${x.count}`).join(', ')}`);
+          continue;
+        }
         if (scopedAnchors.size > 0 && !scopedAnchors.has(name)) continue;
         if (a.status === 'absent') continue;
+
+        if (a.status === 'unknown-state') {
+          const tried = a.attempts.map((x) => `${x.id}×${x.count}`).join(', ');
+          assert.fail(`${f.dir}: anchor "${name}" is unknown-state — the fixture's state.json is missing or its "state" isn't a key in this anchor's expected map (F7) — tried ${tried}`);
+        }
 
         if (a.status === 'broken' || a.status === 'ambiguous') {
           const tried = a.attempts.map((x) => `${x.id}×${x.count}`).join(', ');
@@ -501,19 +674,113 @@ if (fixtures.length === 0) {
         }
       }
 
-      // Oracle identity: the element a fixture marks as the true anchor target
-      // must be exactly the element resolve() returns.
+      // Exchange enumeration is the ONLY document-wide resolution consumers
+      // perform for per-exchange concepts (R1 rule 1).
+      const exchangeEls = resolve(pack, 'exchangeRoot', doc, opts).els;
+      const perExchangeAnchors = new Set(
+        Object.entries(pack.anchors).filter(([, a]) => a && a.scope === 'exchange').map(([n]) => n)
+      );
+
+      // Oracle identity — document-scoped singletons (data-oracle), resolved WITH
+      // the fixture's state: the marked element must be exactly resolve()'s el.
       for (const el of Array.from(doc.querySelectorAll('[data-oracle]'))) {
-        const anchorName = el.getAttribute('data-oracle');
-        const r = resolve(pack, anchorName, doc);
-        assert.strictEqual(r.el, el, `oracle mismatch for anchor "${anchorName}"`);
+        for (const anchorName of (el.getAttribute('data-oracle') || '').split(/\s+/).filter(Boolean)) {
+          const r = resolve(pack, anchorName, doc, opts);
+          assert.strictEqual(r.el, el, `oracle mismatch for anchor "${anchorName}"`);
+        }
       }
 
-      // Negative oracle: a decoy element must never appear in any anchor's match set.
+      // Oracle identity — per-exchange anchors (data-oracle-exchange): the scope is
+      // the marker's own exchange (el.closest('[data-turn-key]')); the resolver must
+      // never jump to a neighbouring exchange.
+      for (const el of Array.from(doc.querySelectorAll('[data-oracle-exchange]'))) {
+        for (const anchorName of (el.getAttribute('data-oracle-exchange') || '').split(/\s+/).filter(Boolean)) {
+          const ex = el.closest('[data-turn-key]');
+          assert.ok(ex, `exchange oracle "${anchorName}": marker sits outside any [data-turn-key] exchange`);
+          const r = resolve(pack, anchorName, ex, opts);
+          assert.strictEqual(r.el, el, `exchange oracle mismatch for anchor "${anchorName}"`);
+        }
+      }
+
+      // Collection oracles (S2.5): resolve('exchangeRoot', doc).els is set-equal to
+      // the marked collection; userUnit/assistantUnit (marked per exchange via
+      // data-oracle-exchange) and codeBlock (data-oracle-collection) are set-equal
+      // per exchange, and the union over exchanges equals every marked element.
+      const markedExchangeRoots = Array.from(doc.querySelectorAll('[data-oracle-collection~="exchangeRoot"]'));
+      if (markedExchangeRoots.length > 0) {
+        assert.ok(elsSetEqual(exchangeEls, markedExchangeRoots),
+          `exchangeRoot enumeration [${exchangeEls.length}] != marked collection [${markedExchangeRoots.length}]`);
+      }
+      for (const ex of exchangeEls) {
+        for (const [name, sel] of [
+          ['userUnit', '[data-oracle-exchange~="userUnit"]'],
+          ['assistantUnit', '[data-oracle-exchange~="assistantUnit"]'],
+          ['codeBlock', '[data-oracle-collection~="codeBlock"]'],
+        ]) {
+          if (!pack.anchors[name]) continue;
+          const marked = Array.from(ex.querySelectorAll(sel));
+          const r = resolve(pack, name, ex, opts);
+          assert.ok(elsSetEqual(r.els, marked),
+            `${name}: per-exchange resolve [${r.els.length}] != marked [${marked.length}] in this exchange`);
+        }
+      }
+      for (const [name, sel] of [
+        ['userUnit', '[data-oracle-exchange~="userUnit"]'],
+        ['assistantUnit', '[data-oracle-exchange~="assistantUnit"]'],
+        ['codeBlock', '[data-oracle-collection~="codeBlock"]'],
+      ]) {
+        if (!pack.anchors[name]) continue;
+        const markedAll = Array.from(doc.querySelectorAll(sel));
+        if (markedAll.length === 0 && exchangeEls.length === 0) continue;
+        const resolvedUnion = new Set();
+        for (const ex of exchangeEls) for (const el of resolve(pack, name, ex, opts).els) resolvedUnion.add(el);
+        assert.equal(resolvedUnion.size, markedAll.length,
+          `${name}: per-exchange union [${resolvedUnion.size}] != every marked element [${markedAll.length}]`);
+        for (const el of markedAll) {
+          assert.ok(resolvedUnion.has(el), `${name}: a marked element was not resolved in its own exchange`);
+        }
+      }
+
+      // S2.4 (F8): per-exchange resolution must succeed in EVERY exchange that
+      // actually carries a same-kind data-oracle-exchange/data-oracle-collection
+      // marker for that anchor — not just >=2 of ALL exchanges regardless of
+      // marking. The old blind floor let a fixture with (say) one Copy-less
+      // exchange and one real one pass on a 1-of-2 fluke, and forced every
+      // >=2-exchange fixture to fully mark userUnit/assistantUnit everywhere,
+      // even decoy fixtures only exercising composerForm/responseActionBar.
+      // The >=2 floor is kept at the MARKED-exchange level: fewer than 2
+      // exchanges carrying the marker is too sparse to assert scoping
+      // behavior on, so that anchor is skipped for this fixture.
+      if (exchangeEls.length >= 2) {
+        for (const name of ['userUnit', 'assistantUnit', 'assistantMarkdownRoot', 'responseActionBar', 'codeBlock', 'copyResponseButton']) {
+          if (!pack.anchors[name]) continue;
+          const markerAttr = name === 'codeBlock' ? 'data-oracle-collection' : 'data-oracle-exchange';
+          const sel = '[' + markerAttr + '~="' + name + '"]';
+          const markedExchanges = exchangeEls.filter((ex) => ex.querySelector(sel));
+          if (markedExchanges.length < 2) continue; // too sparse to assert scoping on
+          let okCount = 0;
+          for (const ex of markedExchanges) if (resolve(pack, name, ex, opts).ok) okCount += 1;
+          assert.equal(okCount, markedExchanges.length,
+            `${f.dir}: per-exchange anchor "${name}" resolved ok in only ${okCount} of ${markedExchanges.length} MARKED exchanges (need ALL of them)`);
+        }
+      }
+
+      // Negative oracle: a decoy element must never appear in ANY anchor's els —
+      // document-scoped anchors resolved on the document, per-exchange anchors
+      // resolved per exchange, always with the fixture's declared state (S2.2).
       for (const el of Array.from(doc.querySelectorAll('[data-oracle-negative]'))) {
         for (const name of Object.keys(pack.anchors)) {
-          const r = resolve(pack, name, doc);
-          assert.ok(!r.els.includes(el), `anchor "${name}" matched a data-oracle-negative decoy element`);
+          if (perExchangeAnchors.has(name)) {
+            for (const ex of exchangeEls) {
+              const r = resolve(pack, name, ex, opts);
+              assert.ok(!r.els.includes(el),
+                `${f.dir}: per-exchange anchor "${name}" matched a data-oracle-negative decoy element`);
+            }
+          } else {
+            const r = resolve(pack, name, doc, opts);
+            assert.ok(!r.els.includes(el),
+              `${f.dir}: anchor "${name}" matched a data-oracle-negative decoy element`);
+          }
         }
       }
     });

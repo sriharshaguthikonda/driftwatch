@@ -138,6 +138,7 @@ A pack is plain JSON. No code changes needed to support a new site.
 | `max` | number | `Infinity` | Maximum matches allowed before a strategy attempt is `ambiguous`. |
 | `pick` | `"first"` \| `"last"` | `"first"` | Which element of the winning strategy's match set becomes `result.el`. |
 | `expected` | object keyed by state | — | Per-state `{min, max}` overrides (see below). Enables `resolve(pack, name, root, { state })`. |
+| `scope` | `"exchange"` | document | Marks a per-exchange anchor: consumers resolve it with an exchange element (e.g. `[data-turn-key]`) as the scope, never document-wide. Under an exchange scope, `inside:` may only reference other per-exchange anchors. |
 | `strategies` | array | required | Ordered list, tried in order; first that satisfies `min`/`max` (and isn't past `degradeLimit` for an action anchor) wins. |
 
 ### Strategy forms
@@ -235,19 +236,63 @@ useful signal for debugging churn — but it is not nothing, so don't call it sa
 ## Fixtures and the ratchet
 
 `test/audit.fixtures.test.js` discovers every `fixtures/<pack>/**/*.html` file and runs
-`audit()` against it. Fixtures are sanitized DOM slices (structure and allow-listed
-attributes only — enforced by `tools/check-no-captures.mjs`), not full page captures.
+`audit()` against it, passing the fixture dir's `state.json` (`{"state": "idle"}`) as
+`{state}`. Fixtures are sanitized DOM slices (structure and allow-listed attributes
+only — enforced by `tools/check-no-captures.mjs`), not full page captures.
 
 `fixtures/<pack>/current/<variant>/` is the frontier: every variant in it (desktop,
-mobile, streaming, logged-out, ...) is treated as equally "now", and every anchor in it
-must resolve `ok` (not `degraded`) or the test fails. Older, dated fixture directories
-(`fixtures/<pack>/2026-03-19-turns/`, etc.) are allowed to show `degraded` — that's
-expected as the DOM moves on — but never `broken` or `ambiguous`.
+composing, streaming, ...) is treated as equally "now". The ratchet bar is
+`fixtures/<pack>/expected-status.json` — fixture dir → anchor → allowed statuses
+(`ok` / `absent` / `degraded`), with a `_notes` reason per non-ok cell. "Every anchor
+ok" is never the bar: legitimately-absent anchors (legacy-only vocabulary,
+state-conditioned Send/Stop) are pinned to `absent` so they stop reading as drift,
+and required anchors fail hard outside their allowed set. Dated fixture directories
+(`fixtures/<pack>/2026-03-19-turns/`, ...) may show `degraded` — expected as the DOM
+moves on — but never `broken` or `ambiguous`.
 
-A fixture can mark the elements it cares about with `data-oracle="<anchorName>"` (must
-resolve to exactly that element) and `data-oracle-negative` (must never appear in any
-anchor's match set). A fixture with no oracle markers is checked on every anchor in the
-pack; one with markers is scoped to only the anchors it names.
+A fixture marks elements with `data-oracle="<anchorName>"` (document-scoped: must
+resolve to exactly that element), `data-oracle-exchange="<anchorName>"` (per-exchange:
+resolved with the marker's own exchange element as scope), `data-oracle-collection`
+(set-equality with `resolve(...).els`, e.g. every exchange / code block), and
+`data-oracle-negative` (must never appear in any anchor's match set — document
+anchors resolved on the document, per-exchange anchors per exchange, always with the
+fixture's state). A fixture with no oracle markers is checked on every anchor in the
+pack; one with markers is scoped to the anchors it names.
+
+## Re-vendoring and the staleness stamp
+
+`build.js` bakes a stamp into the dist header — every pack's version plus a
+content hash over EVERY byte of the bundle that follows the stamp line itself
+(engine + baked packs together, not just the pack JSON — so an engine-only
+change now flips the hash too):
+
+```
+// driftwatch-stamp: chatgpt.com@2 dist-sha256=65b16fb47474215d
+```
+
+Consumers hand-copy `dist/driftwatch.js`; `tools/check-stamp.mjs` always
+recomputes `dist-sha256` from the vendored file's own bytes after its last
+stamp line and fails on a mismatch (LF-normalized, so a CRLF-saved copy still
+verifies) — this alone catches a hand edit or a partial copy, no flags needed:
+
+```bash
+node tools/check-stamp.mjs path/to/vendored-driftwatch.js
+```
+
+`--expect <pack>@<version>` and `--expect-sha <hash>` assert specific values
+(the 2026-07 re-vendor silently shipped a stale pack once):
+
+```bash
+node tools/check-stamp.mjs path/to/vendored-driftwatch.js --expect chatgpt.com@2 --expect-sha 65b16fb47474215d
+```
+
+`--against <path to a freshly built dist/driftwatch.js>` is the "stale copy"
+check to run at vendor time — it fails when the vendored stamp differs from a
+fresh build's stamp:
+
+```bash
+node tools/check-stamp.mjs path/to/vendored-driftwatch.js --against dist/driftwatch.js
+```
 
 ## Privacy
 

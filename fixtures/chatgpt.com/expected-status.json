@@ -1,0 +1,182 @@
+{
+  "_comment": "Ratchet table (R4): fixture dir -> anchor -> allowed audit() statuses, resolved document-scoped with the fixture's declared state. Authored from the real pack-v2 audit output (S2.3); 'ok'-everywhere is never the bar — legitimate absences are pinned here so they stop counting as drift. Dated dirs may never list broken/ambiguous (F3). Synthetic dirs are flagged via state.json's \"_synthetic\": true (F6), not here. _notes carries one reason per non-ok cell.",
+  "current/desktop": {
+    "anchors": {
+      "exchangeRoot": ["ok"],
+      "userUnit": ["ok"],
+      "assistantUnit": ["ok"],
+      "assistantMarkdownRoot": ["ok"],
+      "responseActionBar": ["ok"],
+      "codeBlock": ["ok"],
+      "copyResponseButton": ["ok"],
+      "editMessageButton": ["ok"],
+      "composerForm": ["ok"],
+      "composer": ["ok"],
+      "sendButton": ["absent"],
+      "stopButton": ["absent"],
+      "assistantMessage": ["ok"],
+      "conversationTurn": ["absent"],
+      "pendingComposerInput": ["absent"]
+    },
+    "_notes": {
+      "sendButton": "idle-empty composer: Send button present but disabled (disabled attr), excluded by the `enabled` require; D-S2 expectation idle 0/0",
+      "stopButton": "idle: no Stop control mounted in the composer form",
+      "conversationTurn": "legacy-only anchor: the testid/turn vocabulary is gone from the Sept DOM and an exchange ([data-turn-key]) is not a role turn (R4)",
+      "pendingComposerInput": "post-hydration page: the real composer form is already mounted, no pre-hydration stub present (F2)"
+    }
+  },
+  "current/composing": {
+    "anchors": {
+      "exchangeRoot": ["ok"],
+      "userUnit": ["ok"],
+      "assistantUnit": ["ok"],
+      "assistantMarkdownRoot": ["ok"],
+      "responseActionBar": ["ok"],
+      "codeBlock": ["ok"],
+      "copyResponseButton": ["ok"],
+      "editMessageButton": ["ok"],
+      "composerForm": ["ok"],
+      "composer": ["ok"],
+      "sendButton": ["ok"],
+      "stopButton": ["absent"],
+      "assistantMessage": ["ok"],
+      "conversationTurn": ["absent"],
+      "pendingComposerInput": ["absent"]
+    },
+    "_notes": {
+      "stopButton": "composing: Stop not mounted; Send is the active submit control",
+      "conversationTurn": "legacy-only anchor absent on Sept (R4)",
+      "pendingComposerInput": "post-hydration page: the real composer form is already mounted, no pre-hydration stub present (F2)"
+    }
+  },
+  "current/streaming": {
+    "anchors": {
+      "exchangeRoot": ["ok"],
+      "userUnit": ["ok"],
+      "assistantUnit": ["ok"],
+      "assistantMarkdownRoot": ["ok"],
+      "responseActionBar": ["ok"],
+      "codeBlock": ["ok"],
+      "copyResponseButton": ["ok"],
+      "editMessageButton": ["absent"],
+      "composerForm": ["ok"],
+      "composer": ["ok"],
+      "sendButton": ["absent"],
+      "stopButton": ["ok"],
+      "assistantMessage": ["ok"],
+      "conversationTurn": ["absent"],
+      "pendingComposerInput": ["absent"]
+    },
+    "_notes": {
+      "editMessageButton": "while streaming, the Edit message control is removed from every user unit (measured live 2026-09-21); min:0 anchor",
+      "sendButton": "generation active: Send removed from the composer form while Stop is present",
+      "conversationTurn": "legacy-only anchor absent on Sept (R4)",
+      "pendingComposerInput": "post-hydration page: the real composer form is already mounted, no pre-hydration stub present (F2)"
+    }
+  },
+  "current/streaming-early": {
+    "anchors": {
+      "exchangeRoot": ["ok"],
+      "userUnit": ["ok"],
+      "assistantUnit": ["ok"],
+      "assistantMarkdownRoot": ["ok"],
+      "responseActionBar": ["ok"],
+      "codeBlock": ["ok"],
+      "copyResponseButton": ["ok"],
+      "editMessageButton": ["absent"],
+      "composerForm": ["ok"],
+      "composer": ["ok"],
+      "sendButton": ["absent"],
+      "stopButton": ["ok"],
+      "assistantMessage": ["ok"],
+      "conversationTurn": ["absent"],
+      "pendingComposerInput": ["absent"]
+    },
+    "_notes": {
+      "editMessageButton": "while streaming, the Edit message control is removed from every user unit (measured live 2026-09-21)",
+      "sendButton": "generation active: Send removed while Stop is present",
+      "conversationTurn": "legacy-only anchor absent on Sept (R4)",
+      "pendingComposerInput": "post-hydration page: the real composer form is already mounted, no pre-hydration stub present (F2)"
+    }
+  },
+  "2026-09-21-synthetic-sidebar-stop": {
+    "anchors": {
+      "stopButton": ["ok"],
+      "pendingComposerInput": ["absent"]
+    },
+    "_notes": {
+      "pendingComposerInput": "decoy fixture has no pre-hydration stub (F2)"
+    }
+  },
+  "2026-09-21-synthetic-new-chat": {
+    "anchors": {
+      "pendingComposerInput": ["ok"],
+      "conversationTurn": ["absent"],
+      "editMessageButton": ["absent"],
+      "sendButton": ["absent"],
+      "stopButton": ["absent"]
+    },
+    "_notes": {
+      "conversationTurn": "pre-hydration stub page has no turns yet",
+      "editMessageButton": "no exchange exists before the real composer mounts",
+      "sendButton": "the visible Send is a disabled type=button decoy outside any form, not the composerForm-scoped sendButton anchor",
+      "stopButton": "no composer form mounted yet, so no Stop control exists"
+    }
+  },
+  "2026-09-21-synthetic-composer-decoys": {
+    "anchors": {
+      "composerForm": ["degraded"],
+      "composer": ["ok"],
+      "sendButton": ["ok"],
+      "responseActionBar": ["ok"],
+      "copyResponseButton": ["ok"]
+    },
+    "_notes": {
+      "composerForm": "real form carries no data-chatgpt-composer attr on purpose, to exercise strategy 2 (form:has([data-composer-markdown]):not([data-turn-key] form)); a decoy edit-mode form inside the first exchange is excluded by the :not() guard",
+      "composer": "resolved inside the strategy-2-won composerForm; the decoy's composer-markdown div sits inside the decoy form, never inside the resolved composerForm, so it cannot match",
+      "sendButton": "state composing: the real Send is inside the resolved composerForm; the decoy Send (type=submit aria-label=Send) is data-oracle-negative and excluded by inside:composerForm",
+      "responseActionBar": "document-wide pick:last resolves the second (real) exchange's bar via strategy 1 (has-copy-and-more); the first exchange's Copy-less bar independently exercises strategy 2 (has-more-actions) via its own per-exchange resolve",
+      "copyResponseButton": "resolved inside the document-wide responseActionBar (the real exchange's bar); the first exchange has no Copy button at all, exercising responseActionBar's Copy-less strategy without ever making copyResponseButton broken"
+    }
+  },
+  "2026-07-28-desktop": {
+    "anchors": {
+      "conversationTurn": ["ok"],
+      "assistantMessage": ["degraded"],
+      "copyResponseButton": ["degraded"],
+      "composer": ["degraded"],
+      "pendingComposerInput": ["absent"]
+    },
+    "_notes": {
+      "assistantMessage": "July fixture: Sept unit-key strategy matches nothing; legacy data-message-author-role wins at index 1",
+      "copyResponseButton": "July button is aria-label=\"Copy response\" + testid inside the Response-actions group; testid strategy wins at index 1",
+      "composer": "July composer is #prompt-textarea; prompt-textarea strategy wins at index 1 inside the legacy unified-composer form",
+      "pendingComposerInput": "July capture predates the pre-hydration stub; no such element in this DOM (F2)"
+    }
+  },
+  "2026-07-15-turns": {
+    "anchors": {
+      "conversationTurn": ["ok"],
+      "assistantMessage": ["degraded"],
+      "copyResponseButton": ["degraded"],
+      "pendingComposerInput": ["absent"]
+    },
+    "_notes": {
+      "assistantMessage": "July fixture: legacy data-message-author-role wins at index 1",
+      "copyResponseButton": "Copy response + testid inside the Response-actions group; testid strategy wins at index 1",
+      "pendingComposerInput": "legacy turns.html capture predates the pre-hydration stub; no such element in this DOM (F2)"
+    }
+  },
+  "2026-03-19-turns": {
+    "anchors": {
+      "conversationTurn": ["ok"],
+      "assistantMessage": ["degraded"],
+      "copyResponseButton": ["ok"],
+      "pendingComposerInput": ["absent"]
+    },
+    "_notes": {
+      "assistantMessage": "March fixture: legacy data-message-author-role wins at index 1",
+      "pendingComposerInput": "legacy turns.html capture predates the pre-hydration stub; no such element in this DOM (F2)"
+    }
+  }
+}

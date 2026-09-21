@@ -30,7 +30,7 @@ const ALLOWED_ATTRS = new Set([
   'data-turn-key', 'data-content-search-unit-key', 'data-markdown-text-style',
   'data-markdown-copy', 'data-composer-markdown',
   'data-oracle-collection', 'data-oracle-exchange',
-  'data-chatgpt-composer',
+  'data-chatgpt-composer', 'data-pending-input-initialized',
 ]);
 
 // Attribute-value checks. Tuned against the two real committed fixtures

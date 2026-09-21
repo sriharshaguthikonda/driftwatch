@@ -1,42 +1,93 @@
 {
   "pack": "chatgpt.com",
-  "version": 1,
+  "version": 2,
   "anchors": {
-    "conversationTurn": {
+    "exchangeRoot": {
       "risk": "observe",
-      "pick": "last",
-      "max": 400,
       "strategies": [
-        { "id": "turn.testid-prefix", "testid": "conversation-turn-", "op": "^" },
-        { "id": "turn.data-turn-id", "attr": "data-turn-id" },
-        { "id": "turn.data-turn", "attr": "data-turn" },
-        { "id": "turn.legacy-article", "css": "article[data-testid^=\"conversation-turn-\"]" }
+        { "id": "exchange.turn-key", "attr": "data-turn-key", "requires": ["connected"] }
       ]
     },
-    "assistantMessage": {
+    "userUnit": {
+      "risk": "observe",
+      "scope": "exchange",
+      "strategies": [
+        { "id": "unit.key-user", "css": "[data-content-search-unit-key$=\":user\"]", "requires": ["connected"] },
+        { "id": "unit.author-role-user", "attr": "data-message-author-role", "value": "user", "requires": ["connected"] },
+        { "id": "unit.data-turn-user", "attr": "data-turn", "value": "user", "requires": ["connected"] }
+      ]
+    },
+    "assistantUnit": {
+      "risk": "observe",
+      "scope": "exchange",
+      "strategies": [
+        { "id": "unit.key-assistant", "css": "[data-content-search-unit-key$=\":assistant\"]", "requires": ["connected"] },
+        { "id": "unit.author-role-assistant", "attr": "data-message-author-role", "value": "assistant", "requires": ["connected"] },
+        { "id": "unit.data-turn-assistant", "attr": "data-turn", "value": "assistant", "requires": ["connected"] }
+      ]
+    },
+    "assistantMarkdownRoot": {
+      "risk": "observe",
+      "scope": "exchange",
+      "strategies": [
+        { "id": "markdown.text-style", "attr": "data-markdown-text-style", "value": "assistant-message", "requires": ["connected", "inside:assistantUnit"] },
+        { "id": "markdown.legacy-structure", "css": "[data-message-author-role=\"assistant\"] > div > div", "requires": ["connected", "inside:assistantUnit"] }
+      ]
+    },
+    "responseActionBar": {
       "risk": "observe",
       "pick": "last",
+      "scope": "exchange",
       "strategies": [
-        { "id": "assistant.message-author-role", "attr": "data-message-author-role", "value": "assistant" },
-        { "id": "assistant.data-turn", "attr": "data-turn", "value": "assistant" }
+        { "id": "bar.has-copy-and-more", "css": "div:has(> span > button[aria-label=\"Copy\"]):has(> button[aria-label=\"More actions\"])", "requires": ["connected"] },
+        { "id": "bar.has-more-actions", "css": "div:has(> button[aria-label=\"More actions\"])", "requires": ["connected"] },
+        { "id": "bar.role-group", "role": "group", "name": "Response actions", "requires": ["connected"] },
+        { "id": "bar.legacy-article-div", "css": "article[data-testid^=\"conversation-turn-\"] div:has(> button[data-testid=\"copy-turn-action-button\"])", "requires": ["connected"] }
+      ]
+    },
+    "codeBlock": {
+      "risk": "observe",
+      "scope": "exchange",
+      "strategies": [
+        { "id": "code.markdown-copy", "attr": "data-markdown-copy", "value": "code-block", "requires": ["connected", "inside:assistantMarkdownRoot"] },
+        { "id": "code.legacy-viewer", "css": "pre:has(#code-block-viewer)", "requires": ["connected", "inside:assistantMarkdownRoot"] }
       ]
     },
     "copyResponseButton": {
-      "risk": "observe",
+      "risk": "action",
+      "degradeLimit": 1,
       "pick": "last",
-      "max": 4,
+      "scope": "exchange",
       "strategies": [
-        { "id": "copy.testid-button", "css": "button[data-testid=\"copy-turn-action-button\"]", "requires": ["inside:conversationTurn"] },
-        { "id": "copy.aria-label-prefix", "css": "button[aria-label^=\"Copy\"]", "requires": ["inside:conversationTurn"] }
+        { "id": "copy.aria-exact", "css": "button[aria-label=\"Copy\"]", "requires": ["connected", "enabled", "inside:responseActionBar"] },
+        { "id": "copy.testid", "css": "button[data-testid=\"copy-turn-action-button\"]", "requires": ["connected", "enabled", "inside:responseActionBar"] },
+        { "id": "copy.aria-response", "css": "button[aria-label=\"Copy response\"]", "requires": ["connected", "enabled", "inside:responseActionBar"] }
+      ]
+    },
+    "editMessageButton": {
+      "risk": "action",
+      "degradeLimit": 1,
+      "min": 0,
+      "scope": "exchange",
+      "strategies": [
+        { "id": "edit.aria-exact", "css": "button[aria-label=\"Edit message\"]", "requires": ["connected", "enabled", "inside:userUnit"] }
+      ]
+    },
+    "composerForm": {
+      "risk": "observe",
+      "strategies": [
+        { "id": "form.data-chatgpt-composer", "attr": "data-chatgpt-composer", "requires": ["connected"] },
+        { "id": "form.has-composer-markdown", "css": "form:has([data-composer-markdown]):not([data-turn-key] form)", "requires": ["connected"] },
+        { "id": "form.unified-composer", "css": "form[data-type=\"unified-composer\"]", "requires": ["connected"] }
       ]
     },
     "composer": {
       "risk": "action",
       "degradeLimit": 1,
       "strategies": [
-        { "id": "composer.prompt-textarea-id", "css": "#prompt-textarea" },
-        { "id": "composer.contenteditable-textbox", "css": "[contenteditable=\"true\"][role=\"textbox\"]" },
-        { "id": "composer.prompt-textarea-contenteditable", "css": "div#prompt-textarea[contenteditable=\"true\"]" }
+        { "id": "composer.markdown-textbox", "css": "[data-composer-markdown][contenteditable=\"true\"][role=\"textbox\"]", "requires": ["connected", "inside:composerForm"] },
+        { "id": "composer.prompt-textarea", "css": "#prompt-textarea[contenteditable=\"true\"][role=\"textbox\"]", "requires": ["connected", "inside:composerForm"] },
+        { "id": "composer.prompt-textarea-div", "css": "div#prompt-textarea[contenteditable=\"true\"]", "requires": ["connected", "inside:composerForm"] }
       ]
     },
     "sendButton": {
@@ -44,13 +95,15 @@
       "degradeLimit": 1,
       "min": 0,
       "expected": {
-        "idle": { "min": 1, "max": 1 },
+        "idle": { "min": 0, "max": 0 },
+        "composing": { "min": 1, "max": 1 },
         "streaming": { "min": 0, "max": 0 }
       },
       "strategies": [
-        { "id": "send.testid", "css": "button[data-testid=\"send-button\"]", "requires": ["connected", "enabled"] },
-        { "id": "send.composer-submit-id", "css": "button#composer-submit-button:not([disabled])", "requires": ["connected", "enabled"] },
-        { "id": "send.aria-label-prefix", "css": "form button[aria-label^=\"Send\"]:not([disabled])", "requires": ["connected", "enabled"] }
+        { "id": "send.submit-aria", "css": "button[type=\"submit\"][aria-label=\"Send\"]", "requires": ["connected", "enabled", "inside:composerForm"] },
+        { "id": "send.testid", "css": "button[data-testid=\"send-button\"]", "requires": ["connected", "enabled", "inside:composerForm"] },
+        { "id": "send.composer-submit-id", "css": "button#composer-submit-button:not([disabled])", "requires": ["connected", "enabled", "inside:composerForm"] },
+        { "id": "send.aria-prefix", "css": "button[aria-label^=\"Send\"]:not([disabled])", "requires": ["connected", "enabled", "inside:composerForm"] }
       ]
     },
     "stopButton": {
@@ -59,11 +112,43 @@
       "min": 0,
       "expected": {
         "idle": { "min": 0, "max": 0 },
+        "composing": { "min": 0, "max": 0 },
         "streaming": { "min": 1, "max": 1 }
       },
       "strategies": [
-        { "id": "stop.composer-submit-id", "css": "form[data-type=\"unified-composer\"] #composer-submit-button[data-testid=\"stop-button\"]", "requires": ["connected", "enabled"] },
-        { "id": "stop.aria-label-prefix", "css": "main form button[aria-label^=\"Stop\"]:not([disabled])", "requires": ["connected", "enabled"] }
+        { "id": "stop.aria-exact", "css": "button[aria-label=\"Stop\"]", "requires": ["connected", "enabled", "inside:composerForm"] },
+        { "id": "stop.composer-submit-testid", "css": "#composer-submit-button[data-testid=\"stop-button\"]", "requires": ["connected", "enabled", "inside:composerForm"] },
+        { "id": "stop.aria-prefix", "css": "button[aria-label^=\"Stop\"]:not([disabled])", "requires": ["connected", "enabled", "inside:composerForm"] }
+      ]
+    },
+    "assistantMessage": {
+      "risk": "observe",
+      "pick": "last",
+      "strategies": [
+        { "id": "assistant.unit-key", "css": "[data-content-search-unit-key$=\":assistant\"]", "requires": ["connected"] },
+        { "id": "assistant.message-author-role", "attr": "data-message-author-role", "value": "assistant", "requires": ["connected"] },
+        { "id": "assistant.data-turn", "attr": "data-turn", "value": "assistant", "requires": ["connected"] }
+      ]
+    },
+    "conversationTurn": {
+      "risk": "observe",
+      "pick": "last",
+      "max": 400,
+      "min": 0,
+      "strategies": [
+        { "id": "turn.testid-prefix", "testid": "conversation-turn-", "op": "^" },
+        { "id": "turn.data-turn-id", "attr": "data-turn-id" },
+        { "id": "turn.data-turn", "attr": "data-turn" },
+        { "id": "turn.legacy-article", "css": "article[data-testid^=\"conversation-turn-\"]" }
+      ]
+    },
+    "pendingComposerInput": {
+      "risk": "input",
+      "min": 0,
+      "max": 1,
+      "strategies": [
+        { "id": "pending.stub-id", "css": "textarea#pending-home-input", "requires": ["connected"] },
+        { "id": "pending.stub-attr", "css": "textarea[data-pending-input-initialized]", "requires": ["connected"] }
       ]
     }
   }

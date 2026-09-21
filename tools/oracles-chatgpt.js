@@ -141,7 +141,13 @@ window.__dwMarkOracles = function (state) {
     }
   }
 
-  // e. Summary.
+  // e. Summary. F5: a non-zero warnings list means some exchange was ambiguous
+  // (e.g. two assistant units) and was left unmarked — that is a capture-time
+  // problem, not something the caller should have to notice on its own, so it
+  // throws instead of returning a silently-incomplete result.
+  if (warnings.length > 0) {
+    throw new Error('__dwMarkOracles: ' + warnings.length + ' warning(s), capture blocked: ' + warnings.join('; '));
+  }
   return { exchanges: exchanges.length, marked: marked, negatives: counts.negatives, warnings: warnings };
 };
 })();

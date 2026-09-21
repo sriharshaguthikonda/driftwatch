@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html><body>
+<main>
+<div data-turn-key="decoy1">
+  <form>
+    <div data-composer-markdown contenteditable="true" role="textbox"></div>
+    <button type="submit" aria-label="Send" data-oracle-negative="1"></button>
+  </form>
+  <div data-oracle-exchange="responseActionBar">
+    <button type="button" aria-label="More actions"></button>
+  </div>
+</div>
+<div data-turn-key="real1">
+  <div data-oracle-exchange="responseActionBar">
+    <span>
+      <button type="button" aria-label="Copy" data-oracle-exchange="copyResponseButton"></button>
+    </span>
+    <button type="button" aria-label="More actions"></button>
+  </div>
+</div>
+<form data-oracle="composerForm">
+  <div data-composer-markdown contenteditable="true" role="textbox" data-oracle="composer"></div>
+  <button type="submit" aria-label="Send" data-oracle="sendButton"></button>
+</form>
+</main>
+</body></html>

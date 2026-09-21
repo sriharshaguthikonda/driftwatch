@@ -220,16 +220,16 @@ test('invalid state throws: bogus string and null', () => {
     'null must throw');
 });
 
-test('mismatched exchange: two assistant units raises a warning and skips their anchors', () => {
+test('mismatched exchange: two assistant units throws (F5: warnings are capture-blocking, not silent)', () => {
   const dom = load(MISMATCHED_PAGE);
-  const result = dom.window.__dwMarkOracles('idle');
 
-  assert.equal(result.warnings.length, 1, 'exactly one warning');
-  assert.equal(result.warnings[0], 'assistantUnit exchange 0: found 2, expected 1',
-    'warning names the unit, not element text');
-  assert.equal(result.exchanges, 1, 'one exchange reported');
+  assert.throws(() => dom.window.__dwMarkOracles('idle'),
+    /assistantUnit exchange 0: found 2, expected 1/,
+    'warning text surfaces in the thrown error, not element text');
 
-  // The mismatched assistant units are left unmarked; the user unit still is.
+  // Per-exchange marking happens before the end-of-function throw, so the DOM
+  // is still mutated: the mismatched assistant units are left unmarked, but
+  // the single (unambiguous) user unit in the same exchange IS marked.
   assert.equal(dom.window.document.querySelectorAll('[data-oracle-exchange~="assistantUnit"]').length, 0,
     'no assistantUnit anchor when count != 1');
   assert.equal(
