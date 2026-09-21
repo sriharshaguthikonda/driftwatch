@@ -21,6 +21,8 @@ const ALLOWED_ATTRS = new Set([
   'data-turn-id-container', 'data-scroll-anchor', 'data-virtualkeyboard', 'data-state',
   'data-turn-key', 'data-content-search-unit-key', 'data-markdown-text-style',
   'data-markdown-copy', 'data-composer-markdown',
+  'data-oracle', 'data-oracle-negative', 'data-oracle-collection', 'data-oracle-exchange',
+  'data-chatgpt-composer',
 ]);
 const SKIP_TAGS = new Set(['script', 'style', 'link', 'noscript']);
 // Sept 2026 chatgpt.com vocabulary: the exchange root carries data-turn-key.

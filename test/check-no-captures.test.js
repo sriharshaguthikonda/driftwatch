@@ -77,3 +77,16 @@ test('runGuard: sanitized Sept-2026 attribute vocabulary passes clean (unit-key 
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('runGuard: oracle/composer anchor attributes pass clean (empty composer value + camelCase anchor names)', async () => {
+  const { runGuard } = await import('../tools/check-no-captures.mjs');
+  const tmp = makeFixtureRoot(
+    '<form data-chatgpt-composer=""><div data-oracle-collection="userUnit" data-oracle-exchange="userUnit"></div></form>'
+  );
+  try {
+    const failures = runGuard(tmp);
+    assert.deepEqual(failures, []);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
