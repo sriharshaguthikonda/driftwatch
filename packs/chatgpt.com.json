@@ -195,6 +195,19 @@
       "[data-content-search-unit-key$=\":assistant\"] *",
       "[data-markdown-text-style=\"assistant-message\"]",
       "[data-markdown-text-style=\"assistant-message\"] *"
+    ],
+    "speechSkipSelectors": [
+      "[data-markdown-copy=\"exclude\"]"
+    ],
+    "smartCopyStripSelectors": [
+      "[data-testid=\"copy-turn-action-button\"]",
+      "[data-testid*=\"turn-action\"]",
+      "[aria-label=\"Response actions\"]",
+      "[aria-label=\"Your message actions\"]",
+      "[role=\"group\"][aria-label*=\"actions\"]"
+    ],
+    "conversationPathPatterns": [
+      "/c/[^/]+"
     ]
   }
 }
