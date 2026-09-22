@@ -21,6 +21,18 @@ Master plan: [Tampermonkey churn plan](file:///C:/Windows_software/Tampermonkey/
 - [ ] positive copyResponseButton oracle (must resolve to that exact button) + collection oracles (all user/assistant units across exchanges, all code blocks)
 - [ ] re-vendor staleness check so consumers notice an outdated vendored copy
 
+## Active: consumer contract (field test, 2026-09-22)
+
+The Model MCP Bridge's ChatGPT channel died, and it served as this engine's first field test. The pack stayed healthy on the September DOM (vendored-pack audit ok 11–12 / broken 0). But Prompt-queue's composer-ready and reply capture bypass it with dead literals, and nothing caught that. Re-vendoring passed jest 219/219 while the job path was dead. Coordination plan: [Tampermonkey S8](file:///C:/Windows_software/Tampermonkey/docs/plans/chatgpt-2026-09-churn/S8-bridge-recovery.md); consumer side: [Prompt-queue incident plan](file:///C:/Windows_software/Chrome_extensions/Prompt-queue/plans/incident-2026-09-22-bridge-channel-dead.md).
+
+- [ ] S8.2 lives in the CONSUMER first. Prompt-queue `tests/consumer-selector-audit.test.js` reads this repo's `fixtures/chatgpt.com/{current/*,2026-09-21-synthetic-*}` by path and fails when a consumer route:
+  - picks a `data-oracle-negative` element first;
+  - has no match in a required state;
+  - ignores `pendingComposerInput`;
+  - yields an empty reply union.
+  Nothing is added here yet.
+- [ ] S8.9 (deferred until a second consumer adopts the same contract; the Tampermonkey edge-extension is the candidate): lift it into `consumerAudit({ document, state, routes }) -> { results, failures }` here, with the page-text-free JSON output of `audit()`. No CLI until then.
+
 ## Deferred (not needed to unbreak users)
 
 - repair assistance / candidate selectors (Tampermonkey churn roadmap Phase F; prior-art record [docs/Research/landscape.yaml](Research/landscape.yaml))
