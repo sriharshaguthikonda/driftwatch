@@ -41,8 +41,14 @@
     } catch (e) { /* nowhere left to persist; drop it */ }
   }
 
-  function canary(pack, doc, onDegrade) {
-    var report = dw.audit(pack, doc);
+  // opts is passed straight to dw.audit (e.g. { state } for state-conditioned
+  // anchors). Legacy callers pass onDegrade as the 3rd argument — keep working.
+  function canary(pack, doc, opts, onDegrade) {
+    if (typeof opts === 'function') {
+      onDegrade = opts;
+      opts = undefined;
+    }
+    var report = dw.audit(pack, doc, opts);
     var fp = fingerprint(report);
     if (fp !== lastFingerprint) {
       lastFingerprint = fp;

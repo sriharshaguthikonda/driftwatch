@@ -231,7 +231,7 @@ picture actually changed since the last call — you call it from a poll you alr
 const dw = require('./dist/driftwatch.cjs');
 
 setInterval(() => {
-  dw.canary(pack, document, (report) => {
+  dw.canary(pack, document, { state: 'composing' }, (report) => {
     console.warn('drift detected:', report.summary);
   });
 }, 5000);
@@ -242,6 +242,9 @@ via `dw.canary.history()`), persists the JSON to `chrome.storage.local` (falling
 `GM_setValue`, then `localStorage`) under the key `driftwatch:drift`, and — only if the
 new summary has any `degraded`, `broken`, or `ambiguous` count — calls `onDegrade(report)`.
 An unchanged fingerprint does nothing: no persistence, no callback.
+
+The optional `opts` argument (e.g. `{ state }`) is forwarded straight through to
+`audit()`. Legacy 3-argument calls with the callback in the `opts` slot still work.
 
 ## Two things worth being precise about
 
@@ -337,7 +340,7 @@ allow-list implied by the pack's own strategies, and match counts. They do not r
 - No shadow DOM piercing — light DOM only.
 - No XPath — CSS, test-id, attribute, and ARIA-role strategies only.
 - No text-content matching — fragile and language-dependent.
-- No polling loop — `canary(pack, doc, onDegrade)` runs once per call; the caller supplies the interval (`setInterval`, `MutationObserver` debounce, whatever they already run).
+- No polling loop — `canary(pack, doc, opts, onDegrade)` runs once per call; the caller supplies the interval (`setInterval`, `MutationObserver` debounce, whatever they already run).
 
 ## Roadmap
 
