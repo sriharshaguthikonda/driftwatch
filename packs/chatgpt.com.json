@@ -47,6 +47,7 @@
     },
     "codeBlock": {
       "risk": "observe",
+      "min": 0,
       "scope": "exchange",
       "strategies": [
         { "id": "code.markdown-copy", "attr": "data-markdown-copy", "value": "code-block", "requires": ["connected", "inside:assistantMarkdownRoot"] },
