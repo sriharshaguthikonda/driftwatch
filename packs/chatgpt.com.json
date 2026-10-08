@@ -174,9 +174,15 @@
     "ignoreSelectors": [
       ".settings-header",
       ".sr-only",
-      "[class*=\"code\"]",
-      "[class*=\"language-\"]",
-      "[class*=\"highlight\"]",
+      "[class~=\"code\"]",
+      "[class^=\"code-\"]",
+      "[class*=\" code-\"]",
+      "[class~=\"language\"]",
+      "[class^=\"language-\"]",
+      "[class*=\" language-\"]",
+      "[class~=\"highlight\"]",
+      "[class^=\"highlight-\"]",
+      "[class*=\" highlight-\"]",
       ".token",
       "#content-root",
       "#content-root *"

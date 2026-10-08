@@ -33,4 +33,14 @@ for (const f of fs.readdirSync(PACKS_DIR).filter((x) => x.endsWith('.json')).sor
       }
     }
   });
+  // [class*="code"] substring-matches Tailwind arbitrary-value tokens such as
+  // --codex-base-accent, which hid the whole ChatGPT email card from the reader.
+  // Class-token selectors must be anchored: [class~=x], [class^=x-], [class*=" x-"].
+  test(`pack data: no bare class-substring selectors: ${pack.pack || f}`, () => {
+    for (const [key, value] of Object.entries(pack.data)) {
+      for (const sel of value) {
+        assert.ok(!/\[class\*=["'][^"' ]/.test(sel), `${key}: unanchored class substring selector: ${sel}`);
+      }
+    }
+  });
 }
